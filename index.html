@@ -20,7 +20,7 @@ if(window.tailwind) tailwind.config={theme:{extend:{
 }}};
 </script>
 <style>
-:root{--sidebar:244px;--accent:#267660;--accent-soft:#edf5f1;--line:#e5e8eb;--muted:#7e8690;--surface:#f7f8fa;--ink:#22262b;--card:#fff;--topbar:#fff}
+:root{--sidebar:268px;--accent:#267660;--accent-soft:#edf5f1;--line:#e5e8eb;--muted:#7e8690;--surface:#f7f8fa;--ink:#22262b;--card:#fff;--topbar:#fff}
 *{box-sizing:border-box}
 html,body{min-height:100%;margin:0}
 body{font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;background:var(--surface);color:var(--ink);font-feature-settings:"tnum" 1,"cv05" 1;font-size:13px}
@@ -129,9 +129,9 @@ table.tbl td.actions{white-space:nowrap}
 .workspace-copy small{display:block;font-size:9.5px;color:#98a39b;margin-top:3px}
 .sidebar-nav{flex:1;overflow-y:auto;padding:4px 13px 20px}
 .nav-group{margin:16px 10px 7px;font-size:9px;letter-spacing:.11em;font-weight:600;color:#a8afb5;text-transform:uppercase}
-.navtab{width:100%;display:flex;align-items:center;gap:11px;border:0;border-radius:7px;padding:10px 12px;margin:2px 0;font-size:11.5px;line-height:1.5;text-align:left;color:#818a92;font-weight:500;position:relative;white-space:nowrap;transition:background .14s,color .14s;background:transparent}
-.navtab>.ico{width:17px;height:17px;color:#959da4;flex-shrink:0}
-.navtab .nav-label{flex:1;overflow:hidden;text-overflow:ellipsis}
+.navtab{width:100%;display:flex;align-items:center;gap:11px;border:0;border-radius:7px;padding:10px 12px;margin:2px 0;font-size:12.5px;line-height:1.5;text-align:left;color:#3f4a44;font-weight:550;position:relative;white-space:nowrap;transition:background .14s,color .14s;background:transparent}
+.navtab>.ico{width:17px;height:17px;color:#5f6e66;flex-shrink:0}
+.navtab .nav-label{flex:1;overflow:visible;text-overflow:clip;display:block!important}
 .navtab .nav-count{font-size:9px;min-width:20px;padding:1px 5px;border-radius:4px;background:#f1f3f4;color:#9ea5ab;text-align:center}
 .navtab:hover{background:#f5f7f6;color:#3c4b42}
 .navtab.on{background:#edf5ef;color:#376c4d;font-weight:600}
@@ -326,126 +326,106 @@ const ICONS = {
   trash: ICO('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>')
 };
 
+const KDV_ORAN = 0.20;
 const PAGES = {
   dashboard: {label:"Dashboard", group:"Operasyon", icon:"layout"},
   kantar: {label:"Kantar Fişleri", group:"Operasyon", icon:"scale"},
-  malzemeler: {label:"Malzemeler", group:"Operasyon", icon:"box"},
+  yakit: {label:"Yakıt", group:"Operasyon", icon:"clock"},
   tesis: {label:"Tesis Çalışma", group:"Operasyon", icon:"clock"},
+  irsaliye: {label:"İrsaliye", group:"Operasyon", icon:"file"},
   cariler: {label:"Cariler", group:"Ticari", icon:"users"},
-  finans: {label:"Finans", group:"Ticari", icon:"wallet"},
+  faturalar: {label:"Faturalar", group:"Ticari", icon:"file"},
+  gelirgider: {label:"Gelir / Gider", group:"Ticari", icon:"wallet"},
+  kasa: {label:"Kasa", group:"Ticari", icon:"wallet"},
   cekler: {label:"Çekler", group:"Ticari", icon:"check"},
+  sanayi: {label:"Sanayi Giderleri", group:"Ticari", icon:"box"},
+  personel: {label:"Personel", group:"İnsan Kaynakları", icon:"users"},
   ayarlar: {label:"Ayarlar", group:"Sistem", icon:"settings"},
   asistan: {label:"Asistan", group:"Sistem", icon:"spark"}
 };
 
-let db, page = "dashboard", tabs = ["dashboard"], filters = {}, profileOpen = false;
+let db, page="dashboard", tabs=["dashboard"], filters={}, profileOpen=false, authMode="register";
 
 function uid(p="id"){return p+"_"+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4)}
 function today(){return new Date().toISOString().slice(0,10)}
 function nowTime(){return new Date().toTimeString().slice(0,5)}
 function money(n){n=Number(n)||0;return n.toLocaleString("tr-TR",{minimumFractionDigits:2,maximumFractionDigits:2})+" ₺"}
 function ton(n){n=Number(n)||0;return n.toLocaleString("tr-TR",{minimumFractionDigits:3,maximumFractionDigits:3})+" t"}
+function num(n){const x=Number(String(n).toString().replace(",","."));return isFinite(x)?x:0}
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
+function kdvSiz(tonaj,bf){return num(tonaj)*num(bf)}
+function kdvTutar(netsiz){return num(netsiz)*KDV_ORAN}
+function kdvli(netsiz){return num(netsiz)*(1+KDV_ORAN)}
 function cariById(id){return (db.cariler||[]).find(c=>c.id===id)}
-function malById(id){return (db.malzemeler||[]).find(m=>m.id===id)}
-function cariName(id){const c=cariById(id);return c?c.unvan:"—"}
-function nextFisNo(){
-  const nums=(db.fisler||[]).map(f=>parseInt(String(f.no).replace(/\D/g,""),10)||0);
-  const n=Math.max(1000,...nums)+1;
-  return "KF-"+n;
+function cariName(id){return cariById(id)?.unvan||"—"}
+function sanayiCari(id){return (db.sanayiCariler||[]).find(c=>c.id===id)}
+function personelById(id){return (db.personel||[]).find(p=>p.id===id)}
+function nextNo(list,prefix,field="no"){
+  const nums=(list||[]).map(x=>parseInt(String(x[field]||"").replace(/\D/g,""),10)||0);
+  return prefix+"-"+String(Math.max(1000,...nums)+1);
+}
+function ensureCariByName(name){
+  name=String(name||"").trim(); if(!name) return "";
+  let c=(db.cariler||[]).find(x=>x.unvan.toLowerCase()===name.toLowerCase());
+  if(!c){c={id:uid("c"),kod:"C-"+(1000+(db.cariler||[]).length+1),unvan:name,tip:"Alıcı",yetkili:"",telefon:"",vergiDairesi:"",vergiNo:"",adres:"",acilis:0};db.cariler.push(c)}
+  return c.id;
 }
 
 function defaultDb(){
-  const m1=uid("m"),m2=uid("m"),m3=uid("m"),m4=uid("m");
   return {
-    version:2,
-    users:[],
-    settings:{
-      company:"Mıcır Ocağı",
-      workspace:"Merkez Tesis",
-      email:"",
-      password:"",
-      userName:"",
-      theme:"default",
-      phone:"",
-      address:"",
-      about:"Mıcır ocağı kantar, cari, finans ve operasyon yönetimi."
-    },
-    malzemeler:[
-      {id:m1,ad:"1 No Mıcır (5-12 mm)",birim:"ton",fiyat:420},
-      {id:m2,ad:"2 No Mıcır (12-22 mm)",birim:"ton",fiyat:390},
-      {id:m3,ad:"3 No Mıcır (22-32 mm)",birim:"ton",fiyat:370},
-      {id:m4,ad:"Taş Tozu",birim:"ton",fiyat:280}
-    ],
-    cariler:[],
-    fisler:[],
-    finans:[],
-    cekler:[],
-    tesis:[]
+    version:3, users:[],
+    settings:{company:"Mıcır Ocağı",workspace:"Merkez Tesis",email:"",password:"",userName:"",theme:"default",about:"Mıcır ocağı kantar, cari, finans ve operasyon yönetimi."},
+    malzemeler:["1 No Mıcır (5-12 mm)","2 No Mıcır (12-22 mm)","3 No Mıcır (22-32 mm)","Taş Tozu"],
+    cariler:[], fisler:[], yakit:[], tesis:[], irsaliyeler:[],
+    finans:[], kasa:[], cekler:[], faturalar:[],
+    sanayiCariler:[], sanayiHareket:[],
+    personel:[], izinler:[], girisCikis:[], maaslar:[]
   };
 }
-
 function loadDb(){
   try{
     const raw=localStorage.getItem(DB_KEY);
     if(!raw){db=defaultDb();saveDb();return}
     db=JSON.parse(raw);
-    if(!db.settings) db.settings=defaultDb().settings;
+    const base=defaultDb();
+    db.settings={...base.settings,...(db.settings||{})};
     if(!Array.isArray(db.users)) db.users=[];
-    if(db.settings.email==="admin@micir.local" || db.settings.password==="Admin123!"){
-      db.settings.email=""; db.settings.password=""; db.settings.userName="";
+    if(db.settings.email==="admin@micir.local"||db.settings.password==="Admin123!"){
+      db.settings.email="";db.settings.password="";db.settings.userName="";
     }
-    db.users=db.users.filter(u=>u && u.email && u.email!=="admin@micir.local" && u.password!=="Admin123!");
-    ["malzemeler","cariler","fisler","finans","cekler","tesis"].forEach(k=>{if(!Array.isArray(db[k])) db[k]=[]});
-    db.fisler.forEach(f=>{
-      if(f.net==null && f.brut!=null) f.net=Number(f.brut||0)-Number(f.dara||0);
-      if(f.tutar==null) f.tutar=Number(f.net||0)*Number(f.birimFiyat||0);
+    db.users=db.users.filter(u=>u&&u.email&&u.email!=="admin@micir.local");
+    Object.keys(base).forEach(k=>{if(Array.isArray(base[k]) && !Array.isArray(db[k])) db[k]=[]});
+    (db.fisler||[]).forEach(f=>{
+      if(f.tonaj==null) f.tonaj=f.net??0;
+      if(f.urun==null) f.urun=f.malzeme||"";
+      f.kdvsiz=kdvSiz(f.tonaj,f.birimFiyat);
+      f.kdv=kdvTutar(f.kdvsiz);
+      f.kdvli=kdvli(f.kdvsiz);
     });
   }catch(e){db=defaultDb()}
 }
 function saveDb(){localStorage.setItem(DB_KEY,JSON.stringify(db))}
 
-let authMode="register";
 function currentEmail(){return sessionStorage.getItem(SESSION_KEY)||""}
-function loggedIn(){
-  const s=currentEmail();
-  if(!s || s==="1") return false;
-  return !!findUser(s);
-}
 function findUser(email){
   email=String(email||"").trim().toLowerCase();
   return (db.users||[]).find(u=>String(u.email).toLowerCase()===email)
     || (db.settings.email && String(db.settings.email).toLowerCase()===email ? {email:db.settings.email,password:db.settings.password,name:db.settings.userName} : null);
 }
-function setSession(email){
-  sessionStorage.setItem(SESSION_KEY,email.trim().toLowerCase());
-}
-function login(email,pass){
-  const u=findUser(email);
-  if(u && u.password && pass===u.password){setSession(u.email);return true}
-  return false;
-}
+function loggedIn(){const s=currentEmail();return !!(s && s!=="1" && findUser(s))}
+function setSession(email){sessionStorage.setItem(SESSION_KEY,email.trim().toLowerCase())}
+function login(email,pass){const u=findUser(email);if(u&&u.password&&pass===u.password){setSession(u.email);return true}return false}
 function registerUser(name,email,pass){
-  email=String(email||"").trim().toLowerCase();
-  name=String(name||"").trim();
+  email=String(email||"").trim().toLowerCase(); name=String(name||"").trim();
   if(!name||!email||!pass) return "Ad, e-posta ve şifre zorunlu.";
   if(pass.length<6) return "Şifre en az 6 karakter olmalı.";
   if(findUser(email)) return "Bu e-posta ile hesap var. Giriş yapın.";
   db.users.push({id:uid("u"),name,email,password:pass});
-  if(!db.settings.email){
-    db.settings.email=email;
-    db.settings.password=pass;
-    db.settings.userName=name;
-  }
-  saveDb();
-  setSession(email);
-  return "";
+  if(!db.settings.email){db.settings.email=email;db.settings.password=pass;db.settings.userName=name}
+  saveDb(); setSession(email); return "";
 }
-function activeUser(){
-  const em=currentEmail();
-  return findUser(em) || {email:db.settings.email,name:db.settings.userName,password:db.settings.password};
-}
-function logout(){sessionStorage.removeItem(SESSION_KEY);authMode=db.users.length?"login":"register";render()}
+function activeUser(){return findUser(currentEmail())||{email:db.settings.email,name:db.settings.userName,password:db.settings.password}}
+function logout(){sessionStorage.removeItem(SESSION_KEY);authMode=(db.users||[]).length?"login":"register";render()}
 
 function toast(msg,err){
   const el=document.createElement("div");
@@ -454,150 +434,87 @@ function toast(msg,err){
   document.getElementById("toast").appendChild(el);
   setTimeout(()=>el.remove(),3200);
 }
-
 function applyTheme(){
   document.body.classList.remove("theme-dark","theme-stone");
   if(db.settings.theme==="dark") document.body.classList.add("theme-dark");
   if(db.settings.theme==="stone") document.body.classList.add("theme-stone");
 }
-
-function fisTutar(f){return Number(f.net||0)*Number(f.birimFiyat||0)}
-function cariBakiye(id){
-  const c=cariById(id); if(!c) return 0;
-  const satis=(db.fisler||[]).filter(f=>f.cariId===id).reduce((s,f)=>s+fisTutar(f),0);
-  const fin=(db.finans||[]).filter(x=>x.cariId===id).reduce((s,x)=>{
-    if(x.tip==="tahsilat") return s-Number(x.tutar||0);
-    if(x.tip==="odeme") return s+Number(x.tutar||0);
-    return s+Number(x.tutar||0);
-  },0);
-  const cekTahsil=(db.cekler||[]).filter(x=>x.cariId===id && x.durum==="Tahsil").reduce((s,x)=>s-Number(x.tutar||0),0);
-  return Number(c.acilis||0)+satis+fin+cekTahsil;
-}
-
-function openModal(html,width="640px"){
-  document.getElementById("modalRoot").innerHTML=`<div class="modal-bd" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:${width}">${html}</div></div>`;
-}
+function openModal(html,width="680px"){document.getElementById("modalRoot").innerHTML=`<div class="modal-bd" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:${width}">${html}</div></div>`}
 function closeModal(){document.getElementById("modalRoot").innerHTML=""}
-
-function navTo(p,keepTab){
-  page=p;
-  if(!tabs.includes(p)) tabs.push(p);
-  profileOpen=false;
-  document.body.classList.remove("sidebar-open");
-  renderApp();
-}
-function closeTab(p,ev){
-  ev.stopPropagation();
-  tabs=tabs.filter(t=>t!==p);
-  if(!tabs.length) tabs=["dashboard"];
-  if(page===p) page=tabs[tabs.length-1];
-  renderApp();
-}
+function navTo(p){page=p;if(!tabs.includes(p))tabs.push(p);profileOpen=false;document.body.classList.remove("sidebar-open");renderApp()}
+function closeTab(p,ev){ev.stopPropagation();tabs=tabs.filter(t=>t!==p);if(!tabs.length)tabs=["dashboard"];if(page===p)page=tabs[tabs.length-1];renderApp()}
 
 function exportSheet(rows,name,file){
-  if(!window.XLSX){toast("Excel kütüphanesi yüklenemedi",true);return}
-  const ws=XLSX.utils.json_to_sheet(rows);
+  if(!window.XLSX){toast("Excel kütüphanesi yok",true);return}
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{Kayit:"—"}]),name.slice(0,31));
   XLSX.writeFile(wb,file);
 }
+function normKey(k){return String(k||"").toLowerCase().replace(/ı/g,"i").replace(/ş/g,"s").replace(/ğ/g,"g").replace(/ü/g,"u").replace(/ö/g,"o").replace(/ç/g,"c").replace(/[^a-z0-9]+/g,"")}
+function pick(row,names){
+  const map={}; Object.keys(row||{}).forEach(k=>map[normKey(k)]=row[k]);
+  for(const n of names){const v=map[normKey(n)]; if(v!==undefined && v!=="") return v}
+  return "";
+}
+function toDate(v){
+  if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  const s=String(v||"").trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  const m=s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})$/);
+  if(m){const y=m[3].length===2?"20"+m[3]:m[3];return `${y}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`}
+  return s||today();
+}
+function importExcel(file, handler){
+  if(!file||!window.XLSX){toast("Excel okunamadı",true);return}
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:"array",cellDates:true});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      const n=handler(rows)||0;
+      saveDb(); renderApp(); toast(n+" satır içeri aktarıldı");
+    }catch(err){toast("Aktarım hatası",true)}
+  };
+  r.readAsArrayBuffer(file);
+}
+function importBtn(fn){return `<label class="btn btn-s">${ICONS.file} Excel içe aktar<input type="file" accept=".xlsx,.xls,.csv" hidden onchange="${fn}(this.files[0]);this.value=''"></label>`}
 
-function exportCariDetay(cariId){
-  const c=cariById(cariId); if(!c) return;
-  const satis=db.fisler.filter(f=>f.cariId===cariId).map(f=>({
-    "Fiş No":f.no,Tarih:f.tarih,Saat:f.saat,Plaka:f.plaka,Malzeme:malById(f.malzemeId)?.ad||"",
-    "Tonaj":Number(f.net||0),"Birim Fiyat":Number(f.birimFiyat||0),Tutar:fisTutar(f)
-  }));
-  const fin=db.finans.filter(x=>x.cariId===cariId).map(x=>({Tarih:x.tarih,Tip:x.tip,Tutar:x.tutar,Yöntem:x.yontem,Açıklama:x.aciklama}));
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{
-    Kod:c.kod,Unvan:c.unvan,Tip:c.tip,Yetkili:c.yetkili,Telefon:c.telefon,Vergi:c.vergiNo,Adres:c.adres,Bakiye:cariBakiye(c.id)
-  }]),"Cari");
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(satis.length?satis:[{"Fiş No":"—"}]),"Satislar");
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(fin.length?fin:[{Tarih:"—"}]),"Finans");
-  XLSX.writeFile(wb, (c.kod||"cari")+"_detay.xlsx");
-  toast("Cari detayı Excel'e aktarıldı");
+function ticketBox(title,rows,totals){
+  return `<div class="ticket"><div class="ticket-head"><h2>${esc(db.settings.company||"MICIR OCAGI")}</h2><small>${esc(title)} · ${esc(db.settings.workspace||"")}</small></div>
+    ${rows.map(([a,b])=>`<div class="ticket-row"><span>${esc(a)}</span><b>${b}</b></div>`).join("")}
+    ${totals?`<hr class="ticket-sep">${totals}`:""}
+    <div class="ticket-foot">Bu belge uygulama kaydından üretilmiştir.</div></div>`;
 }
-
-function exportAllCariler(){
-  const ozet=db.cariler.map(c=>({
-    Kod:c.kod,Unvan:c.unvan,Tip:c.tip,Yetkili:c.yetkili,Telefon:c.telefon,
-    "Vergi Dairesi":c.vergiDairesi,"Vergi No":c.vergiNo,Adres:c.adres,Bakiye:cariBakiye(c.id),
-    "Satış Adedi":db.fisler.filter(f=>f.cariId===c.id).length,
-    "Satış Tutarı":db.fisler.filter(f=>f.cariId===c.id).reduce((s,f)=>s+fisTutar(f),0)
-  }));
-  const satislar=db.fisler.map(f=>({
-    Cari:cariName(f.cariId),Kod:cariById(f.cariId)?.kod||"","Fiş No":f.no,Tarih:f.tarih,Plaka:f.plaka,
-    Malzeme:malById(f.malzemeId)?.ad||"",Tonaj:Number(f.net||0),"Birim Fiyat":Number(f.birimFiyat||0),Tutar:fisTutar(f)
-  }));
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ozet),"Cariler");
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(satislar.length?satislar:[{Cari:"—"}]),"Tum Satislar");
-  XLSX.writeFile(wb,"cariler_toplu.xlsx");
-  toast("Tüm cariler ve satış detayları aktarıldı");
+function previewDoc(title,html){
+  openModal(`<div class="modal-header"><h3>${esc(title)}</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <div class="modal-body">${html}</div>
+    <div class="modal-footer"><button class="btn btn-s" onclick="closeModal()">Kapat</button>
+    <button class="btn btn-p" onclick="printHtml()">${ICONS.print} Yazdır</button></div>`,"480px");
 }
-
-function ticketHTML(f){
-  const c=cariById(f.cariId), m=malById(f.malzemeId);
-  return `<div class="ticket">
-    <div class="ticket-head">
-      <h2>${esc(db.settings.company||"MICIR OCAGI")}</h2>
-      <small>KANTAR FİŞİ · ${esc(db.settings.workspace||"Merkez Tesis")}</small>
-    </div>
-    <div class="ticket-row"><span>Fiş No</span><b>${esc(f.no)}</b></div>
-    <div class="ticket-row"><span>Tarih / Saat</span><b>${esc(f.tarih)} ${esc(f.saat||"")}</b></div>
-    <div class="ticket-row"><span>Plaka</span><b>${esc(f.plaka||"—")}</b></div>
-    <div class="ticket-row"><span>Şoför</span><b>${esc(f.sofor||"—")}</b></div>
-    <div class="ticket-row"><span>Cari</span><b>${esc(c?c.unvan:"—")}</b></div>
-    <div class="ticket-row"><span>Malzeme</span><b>${esc(m?m.ad:"—")}</b></div>
-    <hr class="ticket-sep">
-    <div class="ticket-row"><span>1. Tartım (Brüt)</span><b>${ton(f.brut)}</b></div>
-    <div class="ticket-row"><span>2. Tartım (Dara)</span><b>${ton(f.dara)}</b></div>
-    <div class="ticket-row"><span>Net Tonaj</span><b>${ton(f.net)}</b></div>
-    <hr class="ticket-sep">
-    <div class="ticket-row"><span>Birim Fiyat</span><b>${money(f.birimFiyat)}</b></div>
-    <div class="ticket-row"><span>Tonaj</span><b>${ton(f.net)}</b></div>
-    <div class="ticket-total"><span>TUTAR</span><span>${money(fisTutar(f))}</span></div>
-    <hr class="ticket-sep">
-    <div class="ticket-row"><span>Operatör</span><b>${esc(f.operator||"—")}</b></div>
-    <div class="ticket-foot">Bu belge elektronik kantar kaydıdır.<br>${esc(f.not||"")}</div>
-  </div>`;
-}
-function previewFis(id){
-  const f=db.fisler.find(x=>x.id===id); if(!f) return;
-  openModal(`<div class="modal-header"><h3>Kantar Fişi Önizleme</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
-    <div class="modal-body">${ticketHTML(f)}</div>
-    <div class="modal-footer"><span class="modal-footer-note">${esc(f.no)}</span>
-      <button class="btn btn-s" onclick="closeModal()">Kapat</button>
-      <button class="btn btn-p" onclick="printFis('${f.id}')">${ICONS.print} Yazdır</button>
-    </div>`, "480px");
-}
-function printFis(id){
-  const f=db.fisler.find(x=>x.id===id); if(!f) return;
+function printHtml(){
+  const body=document.querySelector("#modalRoot .modal-body");
+  if(!body) return;
   const root=document.getElementById("print-root");
-  root.classList.remove("hidden");
-  root.innerHTML=ticketHTML(f);
-  window.print();
-  root.classList.add("hidden");
+  root.classList.remove("hidden"); root.innerHTML=body.innerHTML; window.print(); root.classList.add("hidden");
+}
+
+function fisTutarNet(f){return kdvSiz(f.tonaj??f.net,f.birimFiyat)}
+function cariSatis(id){return (db.fisler||[]).filter(f=>f.cariId===id)}
+function cariBakiye(id){
+  const c=cariById(id); if(!c) return 0;
+  const satis=cariSatis(id).reduce((s,f)=>s+kdvli(fisTutarNet(f)),0);
+  const fin=(db.finans||[]).filter(x=>x.cariId===id).reduce((s,x)=>s+(x.tip==="gelir"||x.tip==="tahsilat"?-num(x.tutar):num(x.tutar)),0);
+  return num(c.acilis)+satis+fin;
 }
 
 function backupDownload(){
-  const blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"});
   const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="micir_erp_yedek_"+today()+".json";
-  a.click();
-  toast("Yedek indirildi");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:"application/json"}));
+  a.download="micir_erp_yedek_"+today()+".json"; a.click(); toast("Yedek indirildi");
 }
 function restoreBackup(file){
   const r=new FileReader();
-  r.onload=()=>{
-    try{
-      const data=JSON.parse(r.result);
-      if(!data||!data.settings) throw new Error("Geçersiz yedek");
-      db=data; saveDb(); renderApp(); toast("Yedek geri yüklendi");
-    }catch(e){toast("Yedek okunamadı",true)}
-  };
+  r.onload=()=>{try{const data=JSON.parse(r.result);if(!data.settings)throw 0;db=data;saveDb();renderApp();toast("Yedek yüklendi")}catch(e){toast("Yedek okunamadı",true)}};
   r.readAsText(file);
 }
 
@@ -612,81 +529,53 @@ function renderAuth(){
       <div class="auth-hero">
         <div class="auth-kicker"><span class="status-dot"></span> Tesis hattı hazır</div>
         <h1>Kantar, cari ve finans <span>tek çalışma alanında.</span></h1>
-        <p>Mevcut operasyon yapısı korunarak masaüstü kullanıma uygun sadeleştirilmiş yönetim ekranı.</p>
-        <div class="auth-flow">
-          <div class="flow-card">${ICONS.scale}<b>Kantar</b><small>Fiş ve tonaj</small></div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-card">${ICONS.users}<b>Cari</b><small>Satış ekstresi</small></div>
-          <div class="flow-arrow">→</div>
-          <div class="flow-card">${ICONS.wallet}<b>Finans</b><small>Çek ve tahsilat</small></div>
-        </div>
+        <p>Kendi hesabınızla girin. Demo kullanıcı yoktur.</p>
       </div>
-      <div class="auth-brand-footer"><span>Yerel kayıt · tarayıcı deposu</span><span>v2.1</span></div>
+      <div class="auth-brand-footer"><span>Yerel kayıt</span><span>v3</span></div>
     </aside>
-    <section class="auth-form-side">
-      <div class="auth-card">
-        <h2>${reg?"Hesap oluşturun":"Giriş yapın"}</h2>
-        <p>${reg?"Kendi e-posta ve şifrenizle hesap açın. Demo kullanıcı yok.":"Kayıtlı e-posta ve şifrenizle devam edin."}</p>
-        <form onsubmit="event.preventDefault();${reg?"doRegister(this)":"doLogin(this)"}">
-          ${reg?`<label class="lbl">Ad soyad</label><input class="inp" name="name" required style="margin-bottom:12px" autocomplete="name">`:""}
-          <label class="lbl">E-posta</label>
-          <input class="inp" name="email" type="email" required style="margin-bottom:12px" autocomplete="username" value="">
-          <label class="lbl">Şifre</label>
-          <input class="inp" name="password" type="password" required style="margin-bottom:${reg?"12px":"18px"}" autocomplete="${reg?"new-password":"current-password"}">
-          ${reg?`<label class="lbl">Şifre tekrar</label><input class="inp" name="password2" type="password" required style="margin-bottom:18px" autocomplete="new-password">`:""}
-          <button class="btn btn-p" style="width:100%">${reg?"Hesap oluştur ve gir":"Giriş"}</button>
-        </form>
-        <p class="field-note" style="margin-top:14px">
-          ${reg?`Hesabınız var mı? <button class="record-link" type="button" onclick="authMode='login';renderAuth()">Giriş yapın</button>`
-               :`Hesabınız yok mu? <button class="record-link" type="button" onclick="authMode='register';renderAuth()">Hesap oluşturun</button>`}
-        </p>
-      </div>
-    </section>
+    <section class="auth-form-side"><div class="auth-card">
+      <h2>${reg?"Hesap oluşturun":"Giriş yapın"}</h2>
+      <p>${reg?"Ad, e-posta ve şifre ile hesap açın.":"Kayıtlı bilgilerinizle devam edin."}</p>
+      <form onsubmit="event.preventDefault();${reg?"doRegister(this)":"doLogin(this)"}">
+        ${reg?`<label class="lbl">Ad soyad</label><input class="inp" name="name" required style="margin-bottom:12px">`:""}
+        <label class="lbl">E-posta</label><input class="inp" name="email" type="email" required style="margin-bottom:12px">
+        <label class="lbl">Şifre</label><input class="inp" name="password" type="password" required style="margin-bottom:${reg?"12px":"18px"}">
+        ${reg?`<label class="lbl">Şifre tekrar</label><input class="inp" name="password2" type="password" required style="margin-bottom:18px">`:""}
+        <button class="btn btn-p" style="width:100%">${reg?"Hesap oluştur ve gir":"Giriş"}</button>
+      </form>
+      <p class="field-note" style="margin-top:14px">${reg
+        ?`Hesabınız var mı? <button class="record-link" type="button" onclick="authMode='login';renderAuth()">Giriş yapın</button>`
+        :`Hesabınız yok mu? <button class="record-link" type="button" onclick="authMode='register';renderAuth()">Hesap oluşturun</button>`}</p>
+    </div></section>
   </div>`;
 }
-function doLogin(form){
-  const fd=new FormData(form);
-  if(login(fd.get("email"),fd.get("password"))){toast("Hoş geldiniz");render()}
-  else toast("E-posta veya şifre hatalı",true);
-}
+function doLogin(form){const fd=new FormData(form);if(login(fd.get("email"),fd.get("password"))){toast("Hoş geldiniz");render()}else toast("E-posta veya şifre hatalı",true)}
 function doRegister(form){
   const fd=new FormData(form);
   if(fd.get("password")!==fd.get("password2")){toast("Şifreler eşleşmiyor",true);return}
   const err=registerUser(fd.get("name"),fd.get("email"),fd.get("password"));
-  if(err){toast(err,true);return}
-  toast("Hesap oluşturuldu");
-  render();
+  if(err){toast(err,true);return} toast("Hesap oluşturuldu"); render();
 }
 
 function renderApp(){
   applyTheme();
   document.getElementById("authRoot").innerHTML="";
-  const root=document.getElementById("appRoot");
-  root.classList.remove("hidden");
-  const counts={
-    kantar:db.fisler.length,cariler:db.cariler.length,cekler:db.cekler.length,tesis:db.tesis.length
-  };
-  const groups=["Operasyon","Ticari","Sistem"];
+  const root=document.getElementById("appRoot"); root.classList.remove("hidden");
+  const groups=["Operasyon","Ticari","İnsan Kaynakları","Sistem"];
   const nav=groups.map(g=>{
     const items=Object.entries(PAGES).filter(([,v])=>v.group===g).map(([k,v])=>`
-      <button class="navtab ${page===k?"on":""}" onclick="navTo('${k}')">${ICONS[v.icon]}<span class="nav-label">${v.label}</span>${counts[k]!=null?`<span class="nav-count">${counts[k]}</span>`:""}</button>`).join("");
+      <button class="navtab ${page===k?"on":""}" onclick="navTo('${k}')">${ICONS[v.icon]||ICONS.file}<span class="nav-label">${v.label}</span></button>`).join("");
     return `<div class="nav-group">${g}</div>${items}`;
   }).join("");
-
+  const u=activeUser();
   root.innerHTML=`
   <aside class="sidebar">
-    <div class="sidebar-brand">
-      <div class="brand-mark">M</div>
-      <div class="brand-copy"><strong>MICIR OCAGI</strong><span>ERP</span></div>
-    </div>
-    <div class="sidebar-workspace">
-      <div class="workspace-mark">${ICONS.box}</div>
-      <div class="workspace-copy"><b>${esc(db.settings.workspace)}</b><small>${esc(db.settings.company)}</small></div>
-    </div>
+    <div class="sidebar-brand"><div class="brand-mark">M</div><div class="brand-copy"><strong>MICIR OCAGI</strong><span>ERP</span></div></div>
+    <div class="sidebar-workspace"><div class="workspace-mark">${ICONS.box}</div><div class="workspace-copy"><b>${esc(db.settings.workspace)}</b><small>${esc(db.settings.company)}</small></div></div>
     <nav class="sidebar-nav">${nav}</nav>
     <div class="sidebar-bottom">
       <button class="sidebar-backup" onclick="backupDownload()">${ICONS.download}<div><b>Yedek al</b><small>JSON dışa aktar</small></div></button>
-      <div class="sidebar-bottom-line"><span style="display:flex;align-items:center;gap:6px"><span class="status-dot"></span> Yerel</span><span>v2.1</span></div>
+      <div class="sidebar-bottom-line"><span style="display:flex;align-items:center;gap:6px"><span class="status-dot"></span> Yerel</span><span>v3</span></div>
     </div>
   </aside>
   <div class="sidebar-overlay" onclick="document.body.classList.remove('sidebar-open')"></div>
@@ -694,645 +583,770 @@ function renderApp(){
     <header class="app-header">
       <div class="topbar">
         <button class="icon-btn mobile-menu" onclick="document.body.classList.toggle('sidebar-open')">${ICONS.menu}</button>
-        <button class="icon-btn" title="Menü" onclick="document.body.classList.toggle('sidebar-collapsed')">${ICONS.layout}</button>
         <div class="header-crumb">${ICONS.chev}<span>${PAGES[page].group}</span>${ICONS.chev}<b>${PAGES[page].label}</b></div>
         <div class="topbar-right">
           <div class="topbar-date">${ICONS.calendar}${new Date().toLocaleDateString("tr-TR",{weekday:"long",day:"numeric",month:"long"})}</div>
           <div class="header-divider"></div>
           <div class="profile-wrap">
             <button class="profile-button" onclick="profileOpen=!profileOpen;renderApp()">
-              <div class="avatar">${esc(((activeUser().name||activeUser().email||"Y").slice(0,2)).toUpperCase())}</div>
-              <div class="profile-copy"><b>${esc(activeUser().name||db.settings.userName||"Kullanıcı")}</b><small>${esc(activeUser().email||"")}</small></div>
+              <div class="avatar">${esc(((u.name||u.email||"K").slice(0,2)).toUpperCase())}</div>
+              <div class="profile-copy"><b>${esc(u.name||"Kullanıcı")}</b><small>${esc(u.email||"")}</small></div>
             </button>
             ${profileOpen?`<div class="card profile-menu">
-              <div style="margin-bottom:10px"><b style="font-size:12px">${esc(activeUser().name||db.settings.userName||"Kullanıcı")}</b><div class="field-note">${esc(activeUser().email||"")}</div></div>
+              <div style="margin-bottom:10px"><b style="font-size:12px">${esc(u.name||"Kullanıcı")}</b><div class="field-note">${esc(u.email||"")}</div></div>
               <button class="btn btn-s" style="width:100%;margin-bottom:6px" onclick="navTo('ayarlar')">Ayarlar</button>
               <button class="btn btn-danger" style="width:100%" onclick="logout()">${ICONS.out} Çıkış</button>
             </div>`:""}
           </div>
         </div>
       </div>
-      <div class="tab-strip">
-        ${tabs.length?tabs.map(t=>`<span class="chip ${t===page?"on":""}"><button onclick="navTo('${t}')">${ICONS[PAGES[t].icon]}${PAGES[t].label}</button><button class="chip-close" onclick="closeTab('${t}',event)">${ICONS.x}</button></span>`).join(""):`<span class="tab-empty">Açık sekme yok</span>`}
-      </div>
+      <div class="tab-strip">${tabs.map(t=>`<span class="chip ${t===page?"on":""}"><button onclick="navTo('${t}')">${PAGES[t].label}</button><button class="chip-close" onclick="closeTab('${t}',event)">${ICONS.x}</button></span>`).join("")}</div>
     </header>
     <main class="main-view" id="mainView">${renderPage()}</main>
-    <footer class="app-footer">
-      <span>${esc(db.settings.company)} · ${esc(db.settings.workspace)}</span>
-      <span>Kantar · Cari · Finans · Çek · Tesis</span>
-      <span>Veriler bu tarayıcıda saklanır</span>
-    </footer>
+    <footer class="app-footer"><span>${esc(db.settings.company)}</span><span>KDV %20</span><span>Veriler bu tarayıcıda saklanır</span></footer>
   </div>`;
 }
 
 function renderPage(){
-  switch(page){
-    case "dashboard": return viewDashboard();
-    case "kantar": return viewKantar();
-    case "malzemeler": return viewMalzemeler();
-    case "tesis": return viewTesis();
-    case "cariler": return viewCariler();
-    case "finans": return viewFinans();
-    case "cekler": return viewCekler();
-    case "ayarlar": return viewAyarlar();
-    case "asistan": return viewAsistan();
-    default: return "";
-  }
+  const map={dashboard:viewDashboard,kantar:viewKantar,yakit:viewYakit,tesis:viewTesis,irsaliye:viewIrsaliye,cariler:viewCariler,faturalar:viewFaturalar,gelirgider:viewGelirGider,kasa:viewKasa,cekler:viewCekler,sanayi:viewSanayi,personel:viewPersonel,ayarlar:viewAyarlar,asistan:viewAsistan};
+  return (map[page]||viewDashboard)();
+}
+function emptyRow(cols,msg){return `<tr><td class="empty" colspan="${cols}">${msg}</td></tr>`}
+function actions(id,edit,del,prev){
+  return `<td class="actions">${prev?`<button class="icon-btn" title="Önizle" onclick="${prev}">${ICONS.file}</button>`:""}
+    <button class="icon-btn" onclick="${edit}">${ICONS.save}</button>
+    <button class="icon-btn" onclick="${del}">${ICONS.trash}</button></td>`;
 }
 
 function viewDashboard(){
-  const tTon=db.fisler.reduce((s,f)=>s+Number(f.net||0),0);
-  const tSat=db.fisler.reduce((s,f)=>s+fisTutar(f),0);
-  const alacak=db.cariler.reduce((s,c)=>s+Math.max(0,cariBakiye(c.id)),0);
-  const idle=db.tesis.reduce((s,t)=>{
-    const p=String(t.calisilmayanSure||"0").split(":");
-    return s+(Number(p[0]||0)+Number(p[1]||0)/60);
-  },0);
-  const recent=[...db.fisler].sort((a,b)=>(b.tarih+b.saat).localeCompare(a.tarih+a.saat)).slice(0,8);
-  const due=db.cekler.filter(c=>c.durum==="Portföy").slice(0,6);
-  return `
-  <div class="page-head">
-    <div class="page-head-copy">
-      <div class="page-eyebrow">Özet</div>
-      <h1>Dashboard</h1>
-      <p class="page-sub">Tesis hareketleri, kantar tonajı, cari alacak ve çek portföyü tek bakışta.</p>
+  const tonaj=db.fisler.reduce((s,f)=>s+num(f.tonaj),0);
+  const kdvsz=db.fisler.reduce((s,f)=>s+fisTutarNet(f),0);
+  const gelir=db.finans.filter(x=>x.tip==="gelir"||x.tip==="tahsilat").reduce((s,x)=>s+num(x.tutar),0);
+  const gider=db.finans.filter(x=>x.tip==="gider"||x.tip==="odeme").reduce((s,x)=>s+num(x.tutar),0);
+  const kasaB=db.kasa.reduce((s,x)=>s+(x.tip==="giris"?num(x.tutar):-num(x.tutar)),0);
+  const recent=[...db.fisler].sort((a,b)=>String(b.tarih).localeCompare(a.tarih)).slice(0,8);
+  return `<div class="page-head"><div class="page-head-copy"><div class="page-eyebrow">Özet</div><h1>Dashboard</h1>
+    <p class="page-sub">Tonaj, KDV’li satış, kasa ve gelir-gider farkı.</p></div></div>
+    <div class="dash-kpi">
+      <div class="stat"><span>Toplam tonaj</span><b>${ton(tonaj)}</b></div>
+      <div class="stat"><span>KDV’siz satış</span><b>${money(kdvsz)}</b></div>
+      <div class="stat"><span>KDV’li satış</span><b>${money(kdvli(kdvsz))}</b></div>
+      <div class="stat accent"><span>Kasa / net</span><b>${money(kasaB)}</b></div>
     </div>
-  </div>
-  <div class="dash-kpi">
-    <div class="stat"><span>Kantar fişi</span><b>${db.fisler.length}</b></div>
-    <div class="stat"><span>Toplam tonaj</span><b>${ton(tTon)}</b></div>
-    <div class="stat"><span>Satış tutarı</span><b>${money(tSat)}</b></div>
-    <div class="stat accent"><span>Cari alacak</span><b>${money(alacak)}</b></div>
-  </div>
-  <div class="dash-grid">
-    <div>
-      <div class="section-label">Son kantar fişleri <span class="count-badge">${recent.length}</span></div>
-      <div class="tblwrap"><table class="tbl">
-        <thead><tr><th>Fiş</th><th>Cari</th><th>Malzeme</th><th class="r">Tonaj</th><th class="r">Tutar</th></tr></thead>
-        <tbody>${recent.length?recent.map(f=>`<tr>
-          <td><button class="record-link" onclick="previewFis('${f.id}')">${esc(f.no)}</button><span class="cell-sub">${esc(f.tarih)} ${esc(f.saat||"")}</span></td>
-          <td>${esc(cariName(f.cariId))}</td>
-          <td>${esc(malById(f.malzemeId)?.ad||"—")}</td>
-          <td class="r">${ton(f.net)}</td>
-          <td class="r"><b>${money(fisTutar(f))}</b></td>
-        </tr>`).join(""):`<tr><td class="empty" colspan="5">Kayıt yok</td></tr>`}</tbody>
-      </table></div>
+    <div class="dash-grid"><div>
+      <div class="section-label">Son kantar fişleri</div>
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Fiş</th><th>Cari</th><th>Ürün</th><th class="r">Tonaj</th><th class="r">KDV’li</th></tr></thead>
+      <tbody>${recent.length?recent.map(f=>`<tr><td><button class="record-link" onclick="previewFis('${f.id}')">${esc(f.no)}</button></td>
+        <td>${esc(cariName(f.cariId))}</td><td>${esc(f.urun||"")}</td><td class="r">${ton(f.tonaj)}</td><td class="r">${money(kdvli(fisTutarNet(f)))}</td></tr>`).join(""):emptyRow(5,"Kayıt yok")}</tbody></table></div>
     </div>
-    <div>
-      <div class="section-label">Portföy çekleri</div>
-      <div class="card" style="padding:14px">
-        ${due.length?due.map(c=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">
-          <div><b style="font-size:12px">${esc(c.no)}</b><span class="cell-sub">${esc(c.banka)} · vade ${esc(c.vade)}</span></div>
-          <b>${money(c.tutar)}</b>
-        </div>`).join(""):`<div class="field-note">Açık çek yok</div>`}
-        <div class="field-note" style="margin-top:12px">Çalışılmayan süre toplamı: <b>${idle.toFixed(2)} sa</b></div>
-      </div>
-    </div>
-  </div>`;
+    <div class="card" style="padding:16px">
+      <div class="section-label" style="margin-top:0">Gelir − gider</div>
+      <b style="font-size:22px">${money(gelir-gider)}</b>
+      <p class="field-note">Gelir ${money(gelir)} · Gider ${money(gider)}</p>
+      <p class="field-note">Personel ${db.personel.length} · Fatura ${db.faturalar.length} · İrsaliye ${db.irsaliyeler.length}</p>
+    </div></div>`;
 }
 
 function viewKantar(){
   const q=(filters.kantar||"").toLowerCase();
-  const rows=db.fisler.filter(f=>{
-    const blob=[f.no,f.plaka,f.sofor,cariName(f.cariId),malById(f.malzemeId)?.ad].join(" ").toLowerCase();
-    return !q||blob.includes(q);
-  }).sort((a,b)=>(b.tarih+b.saat).localeCompare(a.tarih+a.saat));
-  const sumT=rows.reduce((s,f)=>s+Number(f.net||0),0);
-  const sumM=rows.reduce((s,f)=>s+fisTutar(f),0);
-  return `
-  <div class="page-head">
-    <div class="page-head-copy">
-      <div class="page-eyebrow">Operasyon</div>
-      <h1>Kantar fişleri</h1>
-      <p class="page-sub">Brüt / dara ayrı, net tonaj ve birim fiyat ayrı satır. Kayıttan sonra gerçek fiş önizlemesi.</p>
-      <div class="page-actions">
-        <button class="btn btn-p" onclick="openFisForm()">${ICONS.plus} Yeni fiş</button>
-        <button class="btn btn-s" onclick="exportKantar()">${ICONS.download} Excel</button>
-      </div>
-    </div>
-    <div class="page-stats">
-      <div class="stat"><span>Fiş</span><b>${rows.length}</b></div>
-      <div class="stat"><span>Tonaj</span><b>${ton(sumT)}</b></div>
-      <div class="stat accent"><span>Tutar</span><b>${money(sumM)}</b></div>
-    </div>
-  </div>
-  <div class="card filter-bar">
-    <div style="max-width:280px;flex:1"><label class="lbl">Ara</label><input class="inp" placeholder="Fiş, plaka, cari…" value="${esc(filters.kantar||"")}" oninput="filters.kantar=this.value;renderApp()"></div>
-    <div class="filter-spacer"></div>
-  </div>
-  <div class="tblwrap"><table class="tbl">
-    <thead><tr><th>Fiş</th><th>Cari / Plaka</th><th>Malzeme</th><th class="r">Tonaj</th><th class="r">Birim fiyat</th><th class="r">Tutar</th><th></th></tr></thead>
-    <tbody>${rows.length?rows.map(f=>`<tr>
-      <td><button class="record-link" onclick="previewFis('${f.id}')">${esc(f.no)}</button><span class="cell-sub">${esc(f.tarih)} ${esc(f.saat||"")}</span></td>
-      <td><span class="cell-title">${esc(cariName(f.cariId))}</span><span class="cell-sub">${esc(f.plaka||"—")} · ${esc(f.sofor||"")}</span></td>
-      <td>${esc(malById(f.malzemeId)?.ad||"—")}</td>
-      <td class="r">${ton(f.net)}</td>
-      <td class="r">${money(f.birimFiyat)}</td>
-      <td class="r"><b>${money(fisTutar(f))}</b></td>
-      <td class="actions">
-        <button class="icon-btn" title="Önizle" onclick="previewFis('${f.id}')">${ICONS.file}</button>
-        <button class="icon-btn" title="Düzenle" onclick="openFisForm('${f.id}')">${ICONS.save}</button>
-        <button class="icon-btn" title="Sil" onclick="delFis('${f.id}')">${ICONS.trash}</button>
-      </td>
-    </tr>`).join(""):`<tr><td class="empty" colspan="7">${ICONS.scale} Fiş yok</td></tr>`}</tbody>
-  </table></div>`;
+  const rows=db.fisler.filter(f=>!q||[f.no,cariName(f.cariId),f.urun].join(" ").toLowerCase().includes(q));
+  const t=rows.reduce((s,f)=>s+num(f.tonaj),0), n=rows.reduce((s,f)=>s+fisTutarNet(f),0);
+  return pageShell("Operasyon","Kantar fişleri","Tarih, fiş no, cari, ürün, tonaj, birim fiyat, KDV’siz / KDV’li (%20).",
+    `<button class="btn btn-p" onclick="openFisForm()">${ICONS.plus} Yeni fiş</button>
+     <button class="btn btn-s" onclick="exportKantar()">${ICONS.download} Excel</button>${importBtn("impKantar")}`,
+    `<div class="stat"><span>Tonaj</span><b>${ton(t)}</b></div><div class="stat"><span>KDV’siz</span><b>${money(n)}</b></div><div class="stat accent"><span>KDV’li</span><b>${money(kdvli(n))}</b></div>`)+
+    filterBar("kantar","Fiş no / cari / ürün")+
+    `<div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih / fiş</th><th>Cari</th><th>Ürün cinsi</th><th class="r">Tonaj</th><th class="r">Birim fiyat</th><th class="r">KDV’siz</th><th class="r">KDV’li</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(f=>{const n=fisTutarNet(f);return `<tr>
+      <td><button class="record-link" onclick="previewFis('${f.id}')">${esc(f.no)}</button><span class="cell-sub">${esc(f.tarih)}</span></td>
+      <td>${esc(cariName(f.cariId))}</td><td>${esc(f.urun||"")}</td>
+      <td class="r">${ton(f.tonaj)}</td><td class="r">${money(f.birimFiyat)}</td>
+      <td class="r">${money(n)}</td><td class="r"><b>${money(kdvli(n))}</b></td>
+      ${actions(f.id,`openFisForm('${f.id}')`,`delRec('fisler','${f.id}')`,`previewFis('${f.id}')`)}
+    </tr>`}).join(""):emptyRow(8,"Fiş yok"))+`</tbody></table></div>`;
 }
+function pageShell(eye,title,sub,actionsHtml,statsHtml){
+  return `<div class="page-head"><div class="page-head-copy"><div class="page-eyebrow">${eye}</div><h1>${title}</h1><p class="page-sub">${sub}</p>
+    <div class="page-actions">${actionsHtml||""}</div></div><div class="page-stats">${statsHtml||""}</div></div>`;
+}
+function filterBar(key,ph){return `<div class="card filter-bar"><div><label class="lbl">Ara</label><input class="inp" value="${esc(filters[key]||"")}" placeholder="${ph||""}" oninput="filters.${key}=this.value;renderApp()"></div><div class="filter-spacer"></div></div>`}
 function exportKantar(){
-  exportSheet(db.fisler.map(f=>({
-    "Fiş No":f.no,Tarih:f.tarih,Saat:f.saat,Plaka:f.plaka,Sofor:f.sofor,Cari:cariName(f.cariId),
-    Malzeme:malById(f.malzemeId)?.ad||"",Brut:f.brut,Dara:f.dara,Tonaj:f.net,"Birim Fiyat":f.birimFiyat,Tutar:fisTutar(f)
-  })),"Kantar","kantar_fisleri.xlsx");
-  toast("Kantar listesi aktarıldı");
+  exportSheet(db.fisler.map(f=>({Tarih:f.tarih,"Fiş No":f.no,Cari:cariName(f.cariId),"Ürün Cinsi":f.urun,Tonaj:num(f.tonaj),"Birim Fiyat":num(f.birimFiyat),"KDV'siz":fisTutarNet(f),"KDV'li":kdvli(fisTutarNet(f))})),"Kantar","kantar.xlsx");
 }
+function impKantar(file){importExcel(file,rows=>rows.map(r=>{
+  const tonaj=num(pick(r,["tonaj","miktar","net"])); const bf=num(pick(r,["birim fiyat","birimfiyat","fiyat"]));
+  db.fisler.push({id:uid("f"),no:pick(r,["fis no","fisno","no"])||nextNo(db.fisler,"KF"),tarih:toDate(pick(r,["tarih"])),
+    cariId:ensureCariByName(pick(r,["cari","unvan","musteri"])),urun:pick(r,["urun","urun cinsi","malzeme"]),tonaj,birimFiyat:bf});
+  return 1;
+}).length)}
 function openFisForm(id){
-  const f=id?db.fisler.find(x=>x.id===id):{tarih:today(),saat:nowTime(),no:nextFisNo(),brut:"",dara:"",birimFiyat:"",operator:activeUser().name||db.settings.userName};
-  const cariOpts=db.cariler.map(c=>`<option value="${c.id}" ${c.id===f.cariId?"selected":""}>${esc(c.unvan)}</option>`).join("");
-  const malOpts=db.malzemeler.map(m=>`<option value="${m.id}" ${m.id===f.malzemeId?"selected":""} data-fiyat="${m.fiyat}">${esc(m.ad)}</option>`).join("");
-  openModal(`<div class="modal-header"><h3>${id?"Fişi düzenle":"Yeni kantar fişi"}</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+  const f=id?db.fisler.find(x=>x.id===id):{tarih:today(),no:nextNo(db.fisler,"KF"),tonaj:"",birimFiyat:""};
+  const opts=db.cariler.map(c=>`<option value="${c.id}" ${c.id===f.cariId?"selected":""}>${esc(c.unvan)}</option>`).join("");
+  const dlist=db.malzemeler.map(m=>`<option value="${esc(typeof m==="string"?m:m.ad)}"></option>`).join("");
+  openModal(`<div class="modal-header"><h3>${id?"Fiş düzenle":"Kantar fişi"}</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
     <form class="modal-body" onsubmit="event.preventDefault();saveFis(this,'${id||""}')">
       <div class="form-grid">
-        <div><label class="lbl">Fiş no</label><input class="inp" name="no" value="${esc(f.no||"")}" required></div>
         <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(f.tarih||today())}" required></div>
-        <div><label class="lbl">Saat</label><input class="inp" type="time" name="saat" value="${esc(f.saat||nowTime())}"></div>
-        <div><label class="lbl">Plaka</label><input class="inp" name="plaka" value="${esc(f.plaka||"")}" required></div>
-        <div><label class="lbl">Şoför</label><input class="inp" name="sofor" value="${esc(f.sofor||"")}"></div>
-        <div><label class="lbl">Cari <span class="required">*</span></label><select class="inp" name="cariId" required><option value="">Seçin</option>${cariOpts}</select></div>
-        <div class="full"><label class="lbl">Malzeme</label>
-          <select class="inp" name="malzemeId" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.fiyat) this.form.birimFiyat.value=o.dataset.fiyat">
-            <option value="">Seçin</option>${malOpts}
-          </select>
-        </div>
-        <div><label class="lbl">1. Tartım — Brüt (ton)</label><input class="inp" name="brut" type="number" step="0.001" value="${esc(f.brut??"")}" required oninput="calcNet(this.form)"></div>
-        <div><label class="lbl">2. Tartım — Dara (ton)</label><input class="inp" name="dara" type="number" step="0.001" value="${esc(f.dara??"")}" required oninput="calcNet(this.form)"></div>
-        <div class="full"><label class="lbl">Net tonaj</label><input class="inp computed" name="net" readonly value="${esc(f.net??"")}"></div>
-        <div class="full"><label class="lbl">Birim fiyat (₺ / ton)</label><input class="inp" name="birimFiyat" type="number" step="0.01" value="${esc(f.birimFiyat??"")}" required oninput="calcNet(this.form)"></div>
-        <div class="full"><label class="lbl">Tutar</label><input class="inp computed" name="tutarGoster" readonly></div>
-        <div><label class="lbl">Operatör</label><input class="inp" name="operator" value="${esc(f.operator||"")}"></div>
-        <div class="full"><label class="lbl">Not</label><textarea class="inp" name="not" rows="2">${esc(f.not||"")}</textarea></div>
+        <div><label class="lbl">Fiş no</label><input class="inp" name="no" value="${esc(f.no||"")}" required></div>
+        <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId" required><option value="">Seçin</option>${opts}</select></div>
+        <div class="full"><label class="lbl">Ürün cinsi</label><input class="inp" name="urun" list="urunList" value="${esc(f.urun||"")}" required><datalist id="urunList">${dlist}</datalist></div>
+        <div class="full"><label class="lbl">Tonaj</label><input class="inp" name="tonaj" type="number" step="0.001" value="${esc(f.tonaj??"")}" required oninput="calcFis(this.form)"></div>
+        <div class="full"><label class="lbl">Birim fiyat</label><input class="inp" name="birimFiyat" type="number" step="0.01" value="${esc(f.birimFiyat??"")}" required oninput="calcFis(this.form)"></div>
+        <div><label class="lbl">KDV’siz fiyat</label><input class="inp computed" name="kdvsiz" readonly></div>
+        <div><label class="lbl">KDV’li fiyat (%20)</label><input class="inp computed" name="kdvli" readonly></div>
       </div>
-      <p class="field-note">Tonaj ve birim fiyat ayrı satırdadır. Kayıttan sonra kantar fişi önizlemesi açılır.</p>
-      <div class="modal-footer" style="margin:18px -23px -23px;border-radius:0 0 15px 15px">
-        <button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button>
-        <button class="btn btn-p">${ICONS.save} Kaydet</button>
-      </div>
-    </form>`,"720px");
-  const form=document.querySelector("#modalRoot form");
-  if(form) calcNet(form);
+      <div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div>
+    </form>`,"640px");
+  const form=document.querySelector("#modalRoot form"); if(form) calcFis(form);
 }
-function calcNet(form){
-  const net=Math.max(0,(Number(form.brut.value)||0)-(Number(form.dara.value)||0));
-  form.net.value=net.toFixed(3);
-  form.tutarGoster.value=money(net*(Number(form.birimFiyat.value)||0));
-}
+function calcFis(form){const n=kdvSiz(form.tonaj.value,form.birimFiyat.value);form.kdvsiz.value=money(n);form.kdvli.value=money(kdvli(n))}
 function saveFis(form,id){
   const fd=new FormData(form);
-  const brut=Number(fd.get("brut")||0), dara=Number(fd.get("dara")||0), net=Math.max(0,brut-dara);
-  const rec={
-    id:id||uid("f"),
-    no:fd.get("no"),tarih:fd.get("tarih"),saat:fd.get("saat"),
-    plaka:fd.get("plaka"),sofor:fd.get("sofor"),
-    cariId:fd.get("cariId"),malzemeId:fd.get("malzemeId"),
-    brut,dara,net,birimFiyat:Number(fd.get("birimFiyat")||0),
-    operator:fd.get("operator"),not:fd.get("not")
-  };
+  const rec={id:id||uid("f"),tarih:fd.get("tarih"),no:fd.get("no"),cariId:fd.get("cariId"),urun:fd.get("urun"),tonaj:num(fd.get("tonaj")),birimFiyat:num(fd.get("birimFiyat"))};
   if(id) db.fisler=db.fisler.map(x=>x.id===id?rec:x); else db.fisler.push(rec);
-  saveDb(); closeModal(); renderApp(); toast("Kantar fişi kaydedildi"); previewFis(rec.id);
+  saveDb(); closeModal(); renderApp(); toast("Fiş kaydedildi"); previewFis(rec.id);
 }
-function delFis(id){
-  if(!confirm("Fiş silinsin mi?")) return;
-  db.fisler=db.fisler.filter(x=>x.id!==id); saveDb(); renderApp(); toast("Fiş silindi");
+function previewFis(id){
+  const f=db.fisler.find(x=>x.id===id); if(!f) return;
+  const n=fisTutarNet(f);
+  previewDoc("Kantar fişi", ticketBox("KANTAR FİŞİ",[
+    ["Fiş No",esc(f.no)],["Tarih",esc(f.tarih)],["Cari",esc(cariName(f.cariId))],["Ürün cinsi",esc(f.urun||"—")],
+    ["Tonaj",ton(f.tonaj)],["Birim fiyat",money(f.birimFiyat)],["KDV’siz",money(n)],["KDV %20",money(kdvTutar(n))]
+  ], `<div class="ticket-total"><span>KDV’Lİ TOPLAM</span><span>${money(kdvli(n))}</span></div>`));
 }
+function delRec(key,id){if(!confirm("Silinsin mi?"))return;db[key]=(db[key]||[]).filter(x=>x.id!==id);saveDb();renderApp();toast("Silindi")}
 
-function viewMalzemeler(){
-  return `
-  <div class="page-head"><div class="page-head-copy">
-    <div class="page-eyebrow">Operasyon</div><h1>Malzemeler</h1>
-    <p class="page-sub">Kantar fişlerinde kullanılan ürün kartları ve varsayılan birim fiyat.</p>
-    <div class="page-actions"><button class="btn btn-p" onclick="openMalForm()">${ICONS.plus} Malzeme</button></div>
-  </div></div>
-  <div class="tblwrap"><table class="tbl"><thead><tr><th>Malzeme</th><th>Birim</th><th class="r">Birim fiyat</th><th></th></tr></thead>
-  <tbody>${db.malzemeler.map(m=>`<tr><td><b>${esc(m.ad)}</b></td><td>${esc(m.birim)}</td><td class="r">${money(m.fiyat)}</td>
-    <td class="actions"><button class="icon-btn" onclick="openMalForm('${m.id}')">${ICONS.save}</button>
-    <button class="icon-btn" onclick="delMal('${m.id}')">${ICONS.trash}</button></td></tr>`).join("")}</tbody></table></div>`;
+function viewYakit(){
+  const rows=[...db.yakit].sort((a,b)=>String(b.tarih).localeCompare(a.tarih));
+  const tot=rows.reduce((s,x)=>s+num(x.toplam||num(x.lt)*num(x.birimFiyat)),0);
+  return pageShell("Operasyon","Yakıt","Tarih, fiş no, plaka, şoför, teslim eden, saat (yazıyla), km, litre, birim fiyat, toplam.",
+    `<button class="btn btn-p" onclick="openYakit()">${ICONS.plus} Kayıt</button><button class="btn btn-s" onclick="exportSheet(db.yakit.map(x=>({Tarih:x.tarih,'Fiş No':x.no,Plaka:x.plaka,Sofor:x.sofor,'Teslim Eden':x.teslim,Saat:x.saat,Km:x.km,Lt:x.lt,'Birim Fiyat':x.birimFiyat,Toplam:num(x.lt)*num(x.birimFiyat)})),'Yakit','yakit.xlsx')">${ICONS.download} Excel</button>${importBtn("impYakit")}`,
+    `<div class="stat accent"><span>Toplam</span><b>${money(tot)}</b></div>`)+
+    `<div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih / fiş</th><th>Plaka</th><th>Şoför / teslim</th><th>Saat</th><th class="r">Km</th><th class="r">Lt</th><th class="r">B. fiyat</th><th class="r">Toplam</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(x=>{const t=num(x.lt)*num(x.birimFiyat);return `<tr>
+      <td><button class="record-link" onclick="previewYakit('${x.id}')">${esc(x.no)}</button><span class="cell-sub">${esc(x.tarih)}</span></td>
+      <td>${esc(x.plaka)}</td><td>${esc(x.sofor)}<span class="cell-sub">${esc(x.teslim||"")}</span></td>
+      <td>${esc(x.saat||"")}</td><td class="r">${esc(x.km||"")}</td><td class="r">${esc(x.lt)}</td><td class="r">${money(x.birimFiyat)}</td><td class="r"><b>${money(t)}</b></td>
+      ${actions(x.id,`openYakit('${x.id}')`,`delRec('yakit','${x.id}')`,`previewYakit('${x.id}')`)}</tr>`}).join(""):emptyRow(9,"Kayıt yok"))+`</tbody></table></div>`;
 }
-function openMalForm(id){
-  const m=id?db.malzemeler.find(x=>x.id===id):{ad:"",birim:"ton",fiyat:""};
-  openModal(`<div class="modal-header"><h3>Malzeme</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
-    <form class="modal-body" onsubmit="event.preventDefault();saveMal(this,'${id||""}')">
-      <label class="lbl">Ad</label><input class="inp" name="ad" value="${esc(m.ad)}" required style="margin-bottom:12px">
-      <div class="grid-2">
-        <div><label class="lbl">Birim</label><input class="inp" name="birim" value="${esc(m.birim||"ton")}"></div>
-        <div><label class="lbl">Birim fiyat</label><input class="inp" type="number" step="0.01" name="fiyat" value="${esc(m.fiyat??"")}" required></div>
+function openYakit(id){
+  const x=id?db.yakit.find(i=>i.id===id):{tarih:today(),no:nextNo(db.yakit,"YT"),saat:""};
+  openModal(`<div class="modal-header"><h3>Yakıt fişi</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveYakit(this,'${id||""}')">
+      <div class="form-grid">
+        <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(x.tarih||today())}" required></div>
+        <div><label class="lbl">Fiş no</label><input class="inp" name="no" value="${esc(x.no||"")}" required></div>
+        <div><label class="lbl">Plaka</label><input class="inp" name="plaka" value="${esc(x.plaka||"")}" required></div>
+        <div><label class="lbl">Şoför</label><input class="inp" name="sofor" value="${esc(x.sofor||"")}"></div>
+        <div><label class="lbl">Teslim eden</label><input class="inp" name="teslim" value="${esc(x.teslim||"")}"></div>
+        <div><label class="lbl">Saat</label><input class="inp" name="saat" placeholder="örn. 14:30" value="${esc(x.saat||"")}"><div class="field-note">Normal satır — elle yazın, saat kutusu değil.</div></div>
+        <div><label class="lbl">Km</label><input class="inp" name="km" type="number" step="0.1" value="${esc(x.km??"")}"></div>
+        <div><label class="lbl">Litre</label><input class="inp" name="lt" type="number" step="0.01" value="${esc(x.lt??"")}" required></div>
+        <div class="full"><label class="lbl">Birim fiyat</label><input class="inp" name="birimFiyat" type="number" step="0.01" value="${esc(x.birimFiyat??"")}" required></div>
       </div>
-      <div class="modal-footer" style="margin:18px -23px -23px">
-        <button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button>
-        <button class="btn btn-p">Kaydet</button>
-      </div>
-    </form>`,"480px");
+      <div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div>
+    </form>`,"640px");
 }
-function saveMal(form,id){
+function saveYakit(form,id){
   const fd=new FormData(form);
-  const rec={id:id||uid("m"),ad:fd.get("ad"),birim:fd.get("birim"),fiyat:Number(fd.get("fiyat")||0)};
-  if(id) db.malzemeler=db.malzemeler.map(x=>x.id===id?rec:x); else db.malzemeler.push(rec);
-  saveDb(); closeModal(); renderApp(); toast("Malzeme kaydedildi");
+  const rec={id:id||uid("y"),tarih:fd.get("tarih"),no:fd.get("no"),plaka:fd.get("plaka"),sofor:fd.get("sofor"),teslim:fd.get("teslim"),saat:fd.get("saat"),km:num(fd.get("km")),lt:num(fd.get("lt")),birimFiyat:num(fd.get("birimFiyat"))};
+  if(id) db.yakit=db.yakit.map(x=>x.id===id?rec:x); else db.yakit.push(rec);
+  saveDb(); closeModal(); renderApp(); toast("Yakıt kaydedildi"); previewYakit(rec.id);
 }
-function delMal(id){if(!confirm("Silinsin mi?"))return;db.malzemeler=db.malzemeler.filter(x=>x.id!==id);saveDb();renderApp()}
+function previewYakit(id){
+  const x=db.yakit.find(i=>i.id===id); if(!x) return;
+  previewDoc("Yakıt fişi", ticketBox("YAKIT FİŞİ",[
+    ["Fiş No",esc(x.no)],["Tarih",esc(x.tarih)],["Saat",esc(x.saat||"—")],["Plaka",esc(x.plaka)],["Şoför",esc(x.sofor||"—")],
+    ["Teslim eden",esc(x.teslim||"—")],["Km",esc(x.km||"—")],["Litre",esc(x.lt)],["Birim fiyat",money(x.birimFiyat)]
+  ],`<div class="ticket-total"><span>TOPLAM</span><span>${money(num(x.lt)*num(x.birimFiyat))}</span></div>`));
+}
+function impYakit(file){importExcel(file,rows=>rows.map(r=>{
+  db.yakit.push({id:uid("y"),tarih:toDate(pick(r,["tarih"])),no:pick(r,["fis no","no"])||nextNo(db.yakit,"YT"),
+    plaka:pick(r,["plaka"]),sofor:pick(r,["sofor"]),teslim:pick(r,["teslim eden","teslim"]),saat:String(pick(r,["saat"])),
+    km:num(pick(r,["km"])),lt:num(pick(r,["lt","litre"])),birimFiyat:num(pick(r,["birim fiyat","fiyat"]))});
+  return 1}).length)}
 
 function viewTesis(){
-  return `
-  <div class="page-head">
-    <div class="page-head-copy">
-      <div class="page-eyebrow">Operasyon</div>
-      <h1>Tesis çalışma</h1>
-      <p class="page-sub">Kayıtlarda süre alanı <b>Çalışılmayan süre</b> olarak tutulur. Yeni kayıtta saati elle girin (ss:dd).</p>
-      <div class="page-actions"><button class="btn btn-p" onclick="openTesisForm()">${ICONS.plus} Yeni kayıt</button></div>
-    </div>
-  </div>
-  <div class="info-box">${ICONS.info} Çalışma süresi alanı kaldırıldı; duruş / çalışılmayan süre manuel girilir.</div>
-  <div class="tblwrap" style="margin-top:16px"><table class="tbl">
-    <thead><tr><th>Tarih</th><th>Vardiya</th><th>Çalışılmayan süre</th><th>Neden</th><th>Açıklama</th><th></th></tr></thead>
-    <tbody>${db.tesis.length?db.tesis.map(t=>`<tr>
-      <td>${esc(t.tarih)}</td><td>${esc(t.vardiya)}</td>
-      <td><b>${esc(t.calisilmayanSure||"—")}</b></td>
-      <td><span class="tag warn">${esc(t.neden||"—")}</span></td>
-      <td>${esc(t.aciklama||"")}</td>
-      <td class="actions"><button class="icon-btn" onclick="openTesisForm('${t.id}')">${ICONS.save}</button>
-      <button class="icon-btn" onclick="delTesis('${t.id}')">${ICONS.trash}</button></td>
-    </tr>`).join(""):`<tr><td class="empty" colspan="6">Kayıt yok</td></tr>`}</tbody>
-  </table></div>`;
+  return pageShell("Operasyon","Tesis çalışma","Tarih, işe başlama, paydos, manuel saat ve alt alta birden fazla açıklama.",
+    `<button class="btn btn-p" onclick="openTesis()">${ICONS.plus} Kayıt</button>
+     <button class="btn btn-s" onclick="exportSheet(db.tesis.map(t=>({Tarih:t.tarih,'İşe Başlama':t.baslama,Paydos:t.paydos,Saat:t.saat,Aciklama:(t.aciklamalar||[]).join(' | ')})),'Tesis','tesis.xlsx')">${ICONS.download} Excel</button>${importBtn("impTesis")}`)+
+    `<div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih</th><th>İşe başlama</th><th>Paydos</th><th>Saat</th><th>Açıklamalar</th><th></th></tr></thead><tbody>`+
+    (db.tesis.length?db.tesis.map(t=>`<tr>
+      <td>${esc(t.tarih)}</td><td>${esc(t.baslama||"")}</td><td>${esc(t.paydos||"")}</td><td><b>${esc(t.saat||"")}</b></td>
+      <td style="white-space:normal">${(t.aciklamalar||[]).map(a=>`<div>${esc(a)}</div>`).join("")||"—"}</td>
+      ${actions(t.id,`openTesis('${t.id}')`,`delRec('tesis','${t.id}')`)}</tr>`).join(""):emptyRow(6,"Kayıt yok"))+`</tbody></table></div>`;
 }
-function openTesisForm(id){
-  const t=id?db.tesis.find(x=>x.id===id):{tarih:today(),vardiya:"Gündüz",calisilmayanSure:"00:30",neden:"Bakım",aciklama:""};
+function openTesis(id){
+  const t=id?db.tesis.find(x=>x.id===id):{tarih:today(),baslama:"",paydos:"",saat:"",aciklamalar:[""]};
+  const lines=(t.aciklamalar&&t.aciklamalar.length?t.aciklamalar:[""]).map((a,i)=>`<input class="inp" name="ack_${i}" value="${esc(a)}" style="margin-bottom:8px" placeholder="Açıklama ${i+1}">`).join("");
   openModal(`<div class="modal-header"><h3>Tesis kaydı</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
     <form class="modal-body" onsubmit="event.preventDefault();saveTesis(this,'${id||""}')">
       <div class="form-grid">
-        <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(t.tarih)}" required></div>
-        <div><label class="lbl">Vardiya</label>
-          <select class="inp" name="vardiya">${["Gündüz","Gece","Tam gün"].map(v=>`<option ${v===t.vardiya?"selected":""}>${v}</option>`).join("")}</select>
-        </div>
-        <div class="full"><label class="lbl">Çalışılmayan süre <span class="required">*</span></label>
-          <input class="inp" name="calisilmayanSure" placeholder="ss:dd  örn. 01:45" value="${esc(t.calisilmayanSure||"")}" required>
-          <div class="field-note">Manuel giriş. Saat:dakika formatı (01:30 = 1 saat 30 dk).</div>
-        </div>
-        <div><label class="lbl">Neden</label>
-          <select class="inp" name="neden">${["Bakım","Arıza","Enerji","Hava","Personel","Diğer"].map(v=>`<option ${v===t.neden?"selected":""}>${v}</option>`).join("")}</select>
-        </div>
-        <div class="full"><label class="lbl">Açıklama</label><textarea class="inp" name="aciklama" rows="2">${esc(t.aciklama||"")}</textarea></div>
+        <div class="full"><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(t.tarih)}" required></div>
+        <div><label class="lbl">İşe başlama saati</label><input class="inp" name="baslama" placeholder="07:30" value="${esc(t.baslama||"")}"></div>
+        <div><label class="lbl">Paydos saati</label><input class="inp" name="paydos" placeholder="17:00" value="${esc(t.paydos||"")}"></div>
+        <div class="full"><label class="lbl">Saat (manuel)</label><input class="inp" name="saat" placeholder="örn. 8.5 veya 08:30" value="${esc(t.saat||"")}"><div class="field-note">Saat satırı — değeri siz yazın.</div></div>
+        <div class="full"><label class="lbl">Açıklamalar</label><div id="ackBox">${lines}</div>
+          <button type="button" class="btn btn-xs btn-s" onclick="addAckLine()">+ Açıklama satırı</button></div>
       </div>
-      <div class="modal-footer" style="margin:18px -23px -23px">
-        <button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button>
-        <button class="btn btn-p">Kaydet</button>
-      </div>
+      <div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div>
     </form>`,"560px");
 }
+function addAckLine(){const box=document.getElementById("ackBox");const n=box.querySelectorAll("input").length;const i=document.createElement("input");i.className="inp";i.name="ack_"+n;i.placeholder="Açıklama "+(n+1);i.style.marginBottom="8px";box.appendChild(i)}
 function saveTesis(form,id){
   const fd=new FormData(form);
-  let sure=String(fd.get("calisilmayanSure")||"").trim();
-  if(/^\d+([.,]\d+)?$/.test(sure)){
-    const h=Number(sure.replace(",",".")); const hh=Math.floor(h); const mm=Math.round((h-hh)*60);
-    sure=String(hh).padStart(2,"0")+":"+String(mm).padStart(2,"0");
-  }
-  const rec={id:id||uid("t"),tarih:fd.get("tarih"),vardiya:fd.get("vardiya"),calisilmayanSure:sure,neden:fd.get("neden"),aciklama:fd.get("aciklama")};
+  const aciklamalar=[...form.querySelectorAll("[name^=ack_]")].map(i=>i.value.trim()).filter(Boolean);
+  const rec={id:id||uid("t"),tarih:fd.get("tarih"),baslama:fd.get("baslama"),paydos:fd.get("paydos"),saat:fd.get("saat"),aciklamalar};
   if(id) db.tesis=db.tesis.map(x=>x.id===id?rec:x); else db.tesis.push(rec);
   saveDb(); closeModal(); renderApp(); toast("Tesis kaydı alındı");
 }
-function delTesis(id){if(!confirm("Silinsin mi?"))return;db.tesis=db.tesis.filter(x=>x.id!==id);saveDb();renderApp()}
+function impTesis(file){importExcel(file,rows=>rows.map(r=>{
+  db.tesis.push({id:uid("t"),tarih:toDate(pick(r,["tarih"])),baslama:String(pick(r,["ise baslama","baslama"])),paydos:String(pick(r,["paydos"])),saat:String(pick(r,["saat"])),aciklamalar:String(pick(r,["aciklama","aciklamalar"])).split("|").map(s=>s.trim()).filter(Boolean)});
+  return 1}).length)}
+
+function viewIrsaliye(){
+  const rows=db.irsaliyeler;
+  return pageShell("Operasyon","İrsaliye","Sevk irsaliyesi. Önizleme ve Excel içe / dışa aktarma.",
+    `<button class="btn btn-p" onclick="openIrs()">${ICONS.plus} İrsaliye</button>
+     <button class="btn btn-s" onclick="exportSheet(db.irsaliyeler.map(x=>({Tarih:x.tarih,No:x.no,Cari:cariName(x.cariId),Urun:x.urun,Tonaj:x.tonaj,Plaka:x.plaka})),'Irsaliye','irsaliye.xlsx')">${ICONS.download} Excel</button>${importBtn("impIrs")}`)+
+    `<div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih / no</th><th>Cari</th><th>Ürün</th><th class="r">Tonaj</th><th>Plaka</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(x=>`<tr><td><button class="record-link" onclick="previewIrs('${x.id}')">${esc(x.no)}</button><span class="cell-sub">${esc(x.tarih)}</span></td>
+      <td>${esc(cariName(x.cariId))}</td><td>${esc(x.urun)}</td><td class="r">${ton(x.tonaj)}</td><td>${esc(x.plaka||"")}</td>
+      ${actions(x.id,`openIrs('${x.id}')`,`delRec('irsaliyeler','${x.id}')`,`previewIrs('${x.id}')`)}</tr>`).join(""):emptyRow(6,"İrsaliye yok"))+`</tbody></table></div>`;
+}
+function openIrs(id){
+  const x=id?db.irsaliyeler.find(i=>i.id===id):{tarih:today(),no:nextNo(db.irsaliyeler,"IR")};
+  openModal(`<div class="modal-header"><h3>İrsaliye</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveIrs(this,'${id||""}')"><div class="form-grid">
+      <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(x.tarih||today())}" required></div>
+      <div><label class="lbl">İrsaliye no</label><input class="inp" name="no" value="${esc(x.no||"")}" required></div>
+      <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId">${db.cariler.map(c=>`<option value="${c.id}" ${c.id===x.cariId?"selected":""}>${esc(c.unvan)}</option>`).join("")}</select></div>
+      <div><label class="lbl">Ürün cinsi</label><input class="inp" name="urun" value="${esc(x.urun||"")}"></div>
+      <div><label class="lbl">Miktar (tonaj)</label><input class="inp" name="tonaj" type="number" step="0.001" value="${esc(x.tonaj??"")}"></div>
+      <div><label class="lbl">Plaka</label><input class="inp" name="plaka" value="${esc(x.plaka||"")}"></div>
+      <div><label class="lbl">Teslim</label><input class="inp" name="teslim" value="${esc(x.teslim||"")}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"600px");
+}
+function saveIrs(form,id){
+  const fd=new FormData(form);
+  const rec={id:id||uid("ir"),tarih:fd.get("tarih"),no:fd.get("no"),cariId:fd.get("cariId"),urun:fd.get("urun"),tonaj:num(fd.get("tonaj")),plaka:fd.get("plaka"),teslim:fd.get("teslim")};
+  if(id) db.irsaliyeler=db.irsaliyeler.map(x=>x.id===id?rec:x); else db.irsaliyeler.push(rec);
+  saveDb(); closeModal(); renderApp(); toast("İrsaliye kaydedildi"); previewIrs(rec.id);
+}
+function previewIrs(id){
+  const x=db.irsaliyeler.find(i=>i.id===id); if(!x) return;
+  previewDoc("İrsaliye", ticketBox("SEVK İRSALİYESİ",[["İrsaliye no",esc(x.no)],["Tarih",esc(x.tarih)],["Cari",esc(cariName(x.cariId))],["Ürün",esc(x.urun)],["Tonaj",ton(x.tonaj)],["Plaka",esc(x.plaka||"—")],["Teslim",esc(x.teslim||"—")]]));
+}
+function impIrs(file){importExcel(file,rows=>rows.map(r=>{
+  db.irsaliyeler.push({id:uid("ir"),tarih:toDate(pick(r,["tarih"])),no:pick(r,["no","irsaliye"])||nextNo(db.irsaliyeler,"IR"),
+    cariId:ensureCariByName(pick(r,["cari"])),urun:pick(r,["urun"]),tonaj:num(pick(r,["tonaj","miktar"])),plaka:pick(r,["plaka"]),teslim:pick(r,["teslim"])});
+  return 1}).length)}
 
 function viewCariler(){
   const q=(filters.cari||"").toLowerCase();
-  const rows=db.cariler.filter(c=>!q||[c.kod,c.unvan,c.yetkili,c.telefon].join(" ").toLowerCase().includes(q));
-  return `
-  <div class="page-head">
-    <div class="page-head-copy">
-      <div class="page-eyebrow">Ticari</div>
-      <h1>Cariler</h1>
-      <p class="page-sub">Cari kartını açınca satışlar listelenir. Tekil veya toplu Excel aktarımı satış detayını da taşır.</p>
-      <div class="page-actions">
-        <button class="btn btn-p" onclick="openCariForm()">${ICONS.plus} Yeni cari</button>
-        <button class="btn btn-s" onclick="exportAllCariler()">${ICONS.download} Toplu Excel</button>
-      </div>
-    </div>
-    <div class="page-stats"><div class="stat accent"><span>Cari</span><b>${rows.length}</b></div></div>
-  </div>
-  <div class="card filter-bar"><div><label class="lbl">Ara</label><input class="inp" value="${esc(filters.cari||"")}" oninput="filters.cari=this.value;renderApp()" placeholder="Unvan, kod, yetkili"></div><div class="filter-spacer"></div></div>
-  <div class="tblwrap"><table class="tbl">
-    <thead><tr><th>Cari</th><th>İletişim</th><th>Tip</th><th class="r">Bakiye</th><th></th></tr></thead>
-    <tbody>${rows.length?rows.map(c=>`<tr>
-      <td><button class="record-link" onclick="openCariDetay('${c.id}')">${esc(c.unvan)}</button><span class="cell-sub">${esc(c.kod)}</span></td>
-      <td>${esc(c.yetkili||"—")}<span class="cell-sub">${esc(c.telefon||"")}</span></td>
-      <td><span class="tag">${esc(c.tip||"Alıcı")}</span></td>
-      <td class="r"><b>${money(cariBakiye(c.id))}</b></td>
-      <td class="actions">
-        <button class="icon-btn" title="Detay" onclick="openCariDetay('${c.id}')">${ICONS.file}</button>
-        <button class="icon-btn" title="Excel" onclick="exportCariDetay('${c.id}')">${ICONS.download}</button>
-        <button class="icon-btn" onclick="openCariForm('${c.id}')">${ICONS.save}</button>
-        <button class="icon-btn" onclick="delCari('${c.id}')">${ICONS.trash}</button>
-      </td>
-    </tr>`).join(""):`<tr><td class="empty" colspan="5">Cari yok</td></tr>`}</tbody>
-  </table></div>`;
+  const rows=db.cariler.filter(c=>!q||[c.kod,c.unvan,c.vergiNo].join(" ").toLowerCase().includes(q));
+  const all=db.fisler; const t=all.reduce((s,f)=>s+num(f.tonaj),0), n=all.reduce((s,f)=>s+fisTutarNet(f),0);
+  return pageShell("Ticari","Cariler","Liste toplamları sağ üstte. Cari detayında fiş no filtresi, tonaj ve KDV’li / KDV’siz tutar.",
+    `<button class="btn btn-p" onclick="openCariForm()">${ICONS.plus} Cari</button>
+     <button class="btn btn-s" onclick="exportAllCariler()">${ICONS.download} Toplu Excel</button>${importBtn("impCari")}`,
+    `<div class="stat"><span>Toplam tonaj</span><b>${ton(t)}</b></div><div class="stat"><span>KDV’siz</span><b>${money(n)}</b></div><div class="stat accent"><span>KDV’li</span><b>${money(kdvli(n))}</b></div>`)+
+    filterBar("cari","Unvan / kod")+
+    `<div class="tblwrap"><table class="tbl"><thead><tr><th>Cari</th><th>VKN / TCKN</th><th class="r">Tonaj</th><th class="r">KDV’siz</th><th class="r">KDV’li</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(c=>{const sl=cariSatis(c.id);const tt=sl.reduce((s,f)=>s+num(f.tonaj),0),nn=sl.reduce((s,f)=>s+fisTutarNet(f),0);
+      return `<tr><td><button class="record-link" onclick="openCariDetay('${c.id}')">${esc(c.unvan)}</button><span class="cell-sub">${esc(c.kod)}</span></td>
+      <td>${esc(c.vergiNo||"—")}</td><td class="r">${ton(tt)}</td><td class="r">${money(nn)}</td><td class="r"><b>${money(kdvli(nn))}</b></td>
+      <td class="actions"><button class="icon-btn" onclick="openCariDetay('${c.id}')">${ICONS.file}</button>
+      <button class="icon-btn" onclick="exportCariDetay('${c.id}')">${ICONS.download}</button>
+      <button class="icon-btn" onclick="openCariForm('${c.id}')">${ICONS.save}</button>
+      <button class="icon-btn" onclick="delRec('cariler','${c.id}')">${ICONS.trash}</button></td></tr>`}).join(""):emptyRow(6,"Cari yok"))+`</tbody></table></div>`;
 }
 function openCariForm(id){
   const c=id?cariById(id):{kod:"C-"+(1000+db.cariler.length+1),tip:"Alıcı"};
   openModal(`<div class="modal-header"><h3>Cari kart</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
-    <form class="modal-body" onsubmit="event.preventDefault();saveCari(this,'${id||""}')">
-      <div class="form-grid">
-        <div><label class="lbl">Kod</label><input class="inp" name="kod" value="${esc(c.kod||"")}" required></div>
-        <div><label class="lbl">Tip</label><select class="inp" name="tip">${["Alıcı","Satıcı","Alıcı / Satıcı"].map(t=>`<option ${t===c.tip?"selected":""}>${t}</option>`).join("")}</select></div>
-        <div class="full"><label class="lbl">Unvan</label><input class="inp" name="unvan" value="${esc(c.unvan||"")}" required></div>
-        <div><label class="lbl">Yetkili</label><input class="inp" name="yetkili" value="${esc(c.yetkili||"")}"></div>
-        <div><label class="lbl">Telefon</label><input class="inp" name="telefon" value="${esc(c.telefon||"")}"></div>
-        <div><label class="lbl">Vergi dairesi</label><input class="inp" name="vergiDairesi" value="${esc(c.vergiDairesi||"")}"></div>
-        <div><label class="lbl">Vergi no</label><input class="inp" name="vergiNo" value="${esc(c.vergiNo||"")}"></div>
-        <div class="full"><label class="lbl">Adres</label><textarea class="inp" name="adres" rows="2">${esc(c.adres||"")}</textarea></div>
-        <div><label class="lbl">Açılış bakiyesi</label><input class="inp" type="number" step="0.01" name="acilis" value="${esc(c.acilis??0)}"></div>
-      </div>
-      <div class="modal-footer" style="margin:18px -23px -23px">
-        <button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button>
-        <button class="btn btn-p">Kaydet</button>
-      </div>
-    </form>`,"640px");
+    <form class="modal-body" onsubmit="event.preventDefault();saveCari(this,'${id||""}')"><div class="form-grid">
+      <div><label class="lbl">Kod</label><input class="inp" name="kod" value="${esc(c.kod||"")}" required></div>
+      <div><label class="lbl">Tip</label><select class="inp" name="tip">${["Alıcı","Satıcı","Alıcı / Satıcı"].map(t=>`<option ${t===c.tip?"selected":""}>${t}</option>`).join("")}</select></div>
+      <div class="full"><label class="lbl">Unvan</label><input class="inp" name="unvan" value="${esc(c.unvan||"")}" required></div>
+      <div><label class="lbl">Yetkili</label><input class="inp" name="yetkili" value="${esc(c.yetkili||"")}"></div>
+      <div><label class="lbl">Telefon</label><input class="inp" name="telefon" value="${esc(c.telefon||"")}"></div>
+      <div class="full"><label class="lbl">VKN / TCKN</label><input class="inp" name="vergiNo" value="${esc(c.vergiNo||"")}"></div>
+      <div class="full"><label class="lbl">Adres</label><textarea class="inp" name="adres" rows="2">${esc(c.adres||"")}</textarea></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"600px");
 }
 function saveCari(form,id){
   const fd=new FormData(form);
-  const rec={id:id||uid("c"),kod:fd.get("kod"),tip:fd.get("tip"),unvan:fd.get("unvan"),yetkili:fd.get("yetkili"),telefon:fd.get("telefon"),vergiDairesi:fd.get("vergiDairesi"),vergiNo:fd.get("vergiNo"),adres:fd.get("adres"),acilis:Number(fd.get("acilis")||0)};
-  if(id) db.cariler=db.cariler.map(x=>x.id===id?rec:x); else db.cariler.push(rec);
+  const rec={id:id||uid("c"),kod:fd.get("kod"),tip:fd.get("tip"),unvan:fd.get("unvan"),yetkili:fd.get("yetkili"),telefon:fd.get("telefon"),vergiNo:fd.get("vergiNo"),adres:fd.get("adres"),acilis:0};
+  if(id) db.cariler=db.cariler.map(x=>x.id===id?{...x,...rec,id}:x); else db.cariler.push(rec);
   saveDb(); closeModal(); renderApp(); toast("Cari kaydedildi");
 }
-function delCari(id){if(!confirm("Cari silinsin mi?"))return;db.cariler=db.cariler.filter(x=>x.id!==id);saveDb();renderApp()}
 function openCariDetay(id){
   const c=cariById(id); if(!c) return;
-  const satis=db.fisler.filter(f=>f.cariId===id).sort((a,b)=>b.tarih.localeCompare(a.tarih));
-  const fin=db.finans.filter(x=>x.cariId===id);
-  const cek=db.cekler.filter(x=>x.cariId===id);
+  const fq=(filters.cariFis||"").toLowerCase();
+  const sl=cariSatis(id).filter(f=>!fq||String(f.no).toLowerCase().includes(fq));
+  const t=sl.reduce((s,f)=>s+num(f.tonaj),0), n=sl.reduce((s,f)=>s+fisTutarNet(f),0);
   openModal(`<div class="modal-header"><h3>${esc(c.unvan)}</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
     <div class="modal-body">
-      <div class="grid-3" style="margin-bottom:16px">
-        <div class="stat"><span>Kod</span><b style="font-size:14px">${esc(c.kod)}</b></div>
-        <div class="stat"><span>Satış</span><b style="font-size:14px">${satis.length}</b></div>
-        <div class="stat accent"><span>Bakiye</span><b style="font-size:14px">${money(cariBakiye(id))}</b></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px">
+        <div class="stat"><span>Tonaj</span><b style="font-size:15px">${ton(t)}</b></div>
+        <div class="stat"><span>KDV’siz</span><b style="font-size:15px">${money(n)}</b></div>
+        <div class="stat accent"><span>KDV’li</span><b style="font-size:15px">${money(kdvli(n))}</b></div>
       </div>
-      <div class="field-note" style="margin-bottom:10px">${esc(c.yetkili||"")} · ${esc(c.telefon||"")} · ${esc(c.vergiNo||"")}</div>
-      <div class="section-label">Satışlar (kantar) <span class="count-badge">${satis.length}</span></div>
-      <div class="tblwrap"><table class="tbl"><thead><tr><th>Fiş</th><th>Malzeme</th><th class="r">Tonaj</th><th class="r">Birim fiyat</th><th class="r">Tutar</th></tr></thead>
-      <tbody>${satis.length?satis.map(f=>`<tr>
-        <td><button class="record-link" onclick="previewFis('${f.id}')">${esc(f.no)}</button><span class="cell-sub">${esc(f.tarih)}</span></td>
-        <td>${esc(malById(f.malzemeId)?.ad||"—")}</td>
-        <td class="r">${ton(f.net)}</td><td class="r">${money(f.birimFiyat)}</td><td class="r">${money(fisTutar(f))}</td>
-      </tr>`).join(""):`<tr><td class="empty" colspan="5">Satış yok</td></tr>`}</tbody></table></div>
-      <div class="section-label">Finans / çek</div>
-      <p class="field-note">Hareket: ${fin.length} · Çek: ${cek.length}</p>
+      <label class="lbl">Fiş no filtre</label>
+      <input class="inp" value="${esc(filters.cariFis||"")}" placeholder="Fiş no" oninput="filters.cariFis=this.value;openCariDetay('${id}')" style="margin-bottom:14px">
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Fiş</th><th>Ürün</th><th class="r">Tonaj</th><th class="r">KDV’siz</th><th class="r">KDV’li</th></tr></thead>
+      <tbody>${sl.length?sl.map(f=>`<tr><td>${esc(f.no)}<span class="cell-sub">${esc(f.tarih)}</span></td><td>${esc(f.urun)}</td>
+        <td class="r">${ton(f.tonaj)}</td><td class="r">${money(fisTutarNet(f))}</td><td class="r">${money(kdvli(fisTutarNet(f)))}</td></tr>`).join(""):emptyRow(5,"Satış yok")}</tbody></table></div>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-s" onclick="exportCariDetay('${id}')">${ICONS.download} Bu cariyi Excel'e al</button>
-      <button class="btn btn-p" onclick="closeModal()">Kapat</button>
-    </div>`,"820px");
+    <div class="modal-footer"><button class="btn btn-s" onclick="exportCariDetay('${id}')">${ICONS.download} Satışları Excel’e al</button><button class="btn btn-p" onclick="closeModal()">Kapat</button></div>`,"860px");
 }
+function exportCariDetay(id){
+  const c=cariById(id); if(!c) return;
+  const satis=cariSatis(id).map(f=>({"Fiş No":f.no,Tarih:f.tarih,Urun:f.urun,Tonaj:num(f.tonaj),"Birim Fiyat":num(f.birimFiyat),"KDV'siz":fisTutarNet(f),"KDV'li":kdvli(fisTutarNet(f))}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{Kod:c.kod,Unvan:c.unvan,VKN:c.vergiNo}]),"Cari");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(satis.length?satis:[{"Fiş No":"—"}]),"Satislar");
+  XLSX.writeFile(wb,(c.kod||"cari")+"_detay.xlsx"); toast("Cari satışları aktarıldı");
+}
+function exportAllCariler(){
+  const ozet=db.cariler.map(c=>{const sl=cariSatis(c.id);const n=sl.reduce((s,f)=>s+fisTutarNet(f),0);
+    return {Kod:c.kod,Unvan:c.unvan,VKN:c.vergiNo,Tonaj:sl.reduce((s,f)=>s+num(f.tonaj),0),"KDV'siz":n,"KDV'li":kdvli(n)}});
+  const satis=db.fisler.map(f=>({Cari:cariName(f.cariId),"Fiş No":f.no,Tarih:f.tarih,Urun:f.urun,Tonaj:num(f.tonaj),"KDV'siz":fisTutarNet(f),"KDV'li":kdvli(fisTutarNet(f))}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ozet),"Cariler");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(satis.length?satis:[{Cari:"—"}]),"Tum Satislar");
+  XLSX.writeFile(wb,"cariler_toplu.xlsx"); toast("Toplu cari aktarıldı");
+}
+function impCari(file){importExcel(file,rows=>rows.map(r=>{
+  ensureCariByName(pick(r,["unvan","cari","ad"]));
+  const id=ensureCariByName(pick(r,["unvan","cari","ad"]));
+  const c=cariById(id); if(c){c.vergiNo=pick(r,["vkn","tckn","vergi no"])||c.vergiNo;c.telefon=pick(r,["telefon"])||c.telefon;c.kod=pick(r,["kod"])||c.kod}
+  return 1}).length)}
 
-function viewFinans(){
-  const rows=[...db.finans].sort((a,b)=>b.tarih.localeCompare(a.tarih));
-  return `
-  <div class="page-head"><div class="page-head-copy">
-    <div class="page-eyebrow">Ticari</div><h1>Finans</h1>
-    <p class="page-sub">Tahsilat ve ödeme kayıtları cari bakiyeye yansır.</p>
-    <div class="page-actions"><button class="btn btn-p" onclick="openFinForm()">${ICONS.plus} Hareket</button>
-    <button class="btn btn-s" onclick="exportSheet(db.finans.map(x=>({Tarih:x.tarih,Cari:cariName(x.cariId),Tip:x.tip,Tutar:x.tutar,Yontem:x.yontem,Aciklama:x.aciklama})),'Finans','finans.xlsx')">Excel</button></div>
-  </div></div>
-  <div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih</th><th>Cari</th><th>Tip</th><th>Yöntem</th><th class="r">Tutar</th><th></th></tr></thead>
-  <tbody>${rows.length?rows.map(x=>`<tr>
-    <td>${esc(x.tarih)}</td><td>${esc(cariName(x.cariId))}</td>
-    <td><span class="tag ${x.tip==="tahsilat"?"success":""}">${esc(x.tip)}</span></td>
-    <td>${esc(x.yontem)}</td><td class="r"><b>${money(x.tutar)}</b></td>
-    <td class="actions"><button class="icon-btn" onclick="delFin('${x.id}')">${ICONS.trash}</button></td>
-  </tr>`).join(""):`<tr><td class="empty" colspan="6">Hareket yok</td></tr>`}</tbody></table></div>`;
+function viewFaturalar(){
+  const tab=filters.fat||"giden";
+  const rows=db.faturalar.filter(f=>(f.yon||"giden")===tab);
+  const t=rows.reduce((s,f)=>s+num(f.tonaj),0), n=rows.reduce((s,f)=>s+num(f.kdvsiz||kdvSiz(f.tonaj,f.birimFiyat)),0);
+  return pageShell("Ticari","Faturalar","Gelen ve giden fatura. KDV %20.",
+    `<button class="btn btn-p" onclick="openFatura()">${ICONS.plus} Fatura</button>
+     <button class="btn btn-s" onclick="exportSheet(rowsSafeFat(),'Faturalar','faturalar.xlsx')">${ICONS.download} Excel</button>${importBtn("impFat")}`,
+    `<div class="stat"><span>Tonaj</span><b>${ton(t)}</b></div><div class="stat"><span>KDV’siz</span><b>${money(n)}</b></div><div class="stat accent"><span>KDV’li</span><b>${money(kdvli(n))}</b></div>`)+
+    `<div style="display:flex;gap:6px;margin-bottom:14px;background:#eef1f2;padding:4px;border-radius:8px;width:fit-content">
+      <button class="subtab ${tab==="giden"?"on":""}" onclick="filters.fat='giden';renderApp()">Giden faturalar</button>
+      <button class="subtab ${tab==="gelen"?"on":""}" onclick="filters.fat='gelen';renderApp()">Gelen faturalar</button>
+    </div>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih / fiş</th><th>Cari</th><th>VKN/TCKN</th><th>Ürün</th><th class="r">Tonaj</th><th class="r">Toplam</th><th class="r">KDV</th><th class="r">KDV’li</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(f=>{const ns=num(f.kdvsiz||kdvSiz(f.tonaj,f.birimFiyat));return `<tr>
+      <td><button class="record-link" onclick="previewFat('${f.id}')">${esc(f.no)}</button><span class="cell-sub">${esc(f.tarih)}</span></td>
+      <td>${esc(cariName(f.cariId))}</td><td>${esc(f.vkn||cariById(f.cariId)?.vergiNo||"")}</td><td>${esc(f.urun)}</td>
+      <td class="r">${ton(f.tonaj)}</td><td class="r">${money(ns)}</td><td class="r">${money(kdvTutar(ns))}</td><td class="r"><b>${money(kdvli(ns))}</b></td>
+      ${actions(f.id,`openFatura('${f.id}')`,`delRec('faturalar','${f.id}')`,`previewFat('${f.id}')`)}</tr>`}).join(""):emptyRow(9,"Fatura yok"))+`</tbody></table></div>`;
 }
-function openFinForm(){
-  openModal(`<div class="modal-header"><h3>Finans hareketi</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
-    <form class="modal-body" onsubmit="event.preventDefault();saveFin(this)">
-      <div class="form-grid">
-        <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${today()}" required></div>
-        <div><label class="lbl">Tip</label><select class="inp" name="tip"><option value="tahsilat">Tahsilat</option><option value="odeme">Ödeme</option></select></div>
-        <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId" required>${db.cariler.map(c=>`<option value="${c.id}">${esc(c.unvan)}</option>`).join("")}</select></div>
-        <div><label class="lbl">Tutar</label><input class="inp" type="number" step="0.01" name="tutar" required></div>
-        <div><label class="lbl">Yöntem</label><select class="inp" name="yontem"><option>Nakit</option><option>Havale</option><option>Kredi kartı</option><option>Mahsup</option></select></div>
-        <div class="full"><label class="lbl">Açıklama</label><input class="inp" name="aciklama"></div>
-      </div>
-      <div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div>
-    </form>`,"560px");
+function rowsSafeFat(){return db.faturalar.map(f=>({Yon:f.yon,Tarih:f.tarih,"Fiş No":f.no,Cari:cariName(f.cariId),VKN:f.vkn,Urun:f.urun,Tonaj:f.tonaj,"KDV'siz":num(f.kdvsiz||kdvSiz(f.tonaj,f.birimFiyat)),KDV:kdvTutar(num(f.kdvsiz||kdvSiz(f.tonaj,f.birimFiyat))),"KDV'li":kdvli(num(f.kdvsiz||kdvSiz(f.tonaj,f.birimFiyat)))}))}
+function openFatura(id){
+  const f=id?db.faturalar.find(x=>x.id===id):{tarih:today(),no:nextNo(db.faturalar,"FT"),yon:filters.fat||"giden"};
+  openModal(`<div class="modal-header"><h3>Fatura</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveFat(this,'${id||""}')"><div class="form-grid">
+      <div><label class="lbl">Yön</label><select class="inp" name="yon"><option value="giden" ${f.yon==="giden"?"selected":""}>Giden</option><option value="gelen" ${f.yon==="gelen"?"selected":""}>Gelen</option></select></div>
+      <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(f.tarih||today())}"></div>
+      <div><label class="lbl">Fiş no</label><input class="inp" name="no" value="${esc(f.no||"")}" required></div>
+      <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId">${db.cariler.map(c=>`<option value="${c.id}" ${c.id===f.cariId?"selected":""}>${esc(c.unvan)}</option>`).join("")}</select></div>
+      <div><label class="lbl">VKN / TCKN</label><input class="inp" name="vkn" value="${esc(f.vkn||"")}"></div>
+      <div><label class="lbl">Ürün cinsi</label><input class="inp" name="urun" value="${esc(f.urun||"")}"></div>
+      <div><label class="lbl">Miktar (tonaj)</label><input class="inp" name="tonaj" type="number" step="0.001" value="${esc(f.tonaj??"")}"></div>
+      <div><label class="lbl">Birim fiyat</label><input class="inp" name="birimFiyat" type="number" step="0.01" value="${esc(f.birimFiyat??"")}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"640px");
 }
-function saveFin(form){
+function saveFat(form,id){
+  const fd=new FormData(form); const tonaj=num(fd.get("tonaj")), bf=num(fd.get("birimFiyat")), ns=kdvSiz(tonaj,bf);
+  const rec={id:id||uid("ft"),yon:fd.get("yon"),tarih:fd.get("tarih"),no:fd.get("no"),cariId:fd.get("cariId"),vkn:fd.get("vkn"),urun:fd.get("urun"),tonaj,birimFiyat:bf,kdvsiz:ns};
+  if(id) db.faturalar=db.faturalar.map(x=>x.id===id?rec:x); else db.faturalar.push(rec);
+  saveDb(); closeModal(); renderApp(); toast("Fatura kaydedildi"); previewFat(rec.id);
+}
+function previewFat(id){
+  const f=db.faturalar.find(x=>x.id===id); if(!f) return; const ns=num(f.kdvsiz||kdvSiz(f.tonaj,f.birimFiyat));
+  previewDoc("Fatura", ticketBox((f.yon==="gelen"?"GELEN":"GIDEN")+" FATURA",[
+    ["Fiş no",esc(f.no)],["Tarih",esc(f.tarih)],["Cari",esc(cariName(f.cariId))],["VKN/TCKN",esc(f.vkn||"—")],
+    ["Ürün",esc(f.urun)],["Tonaj",ton(f.tonaj)],["KDV’siz",money(ns)],["KDV",money(kdvTutar(ns))]
+  ],`<div class="ticket-total"><span>KDV’Lİ</span><span>${money(kdvli(ns))}</span></div>`));
+}
+function impFat(file){importExcel(file,rows=>rows.map(r=>{
+  const tonaj=num(pick(r,["tonaj","miktar"])); const bf=num(pick(r,["birim fiyat","fiyat"]));
+  db.faturalar.push({id:uid("ft"),yon:String(pick(r,["yon"])).toLowerCase().includes("gelen")?"gelen":"giden",
+    tarih:toDate(pick(r,["tarih"])),no:pick(r,["fis no","no"])||nextNo(db.faturalar,"FT"),
+    cariId:ensureCariByName(pick(r,["cari"])),vkn:pick(r,["vkn","tckn"]),urun:pick(r,["urun"]),tonaj,birimFiyat:bf,kdvsiz:kdvSiz(tonaj,bf)});
+  return 1}).length)}
+
+function viewGelirGider(){
+  const tab=filters.gg||"gelir";
+  const rows=db.finans.filter(x=>(x.tip==="gelir"||x.tip==="tahsilat")?(tab==="gelir"):(tab==="gider"));
+  const gelir=db.finans.filter(x=>x.tip==="gelir"||x.tip==="tahsilat").reduce((s,x)=>s+num(x.tutar),0);
+  const gider=db.finans.filter(x=>x.tip==="gider"||x.tip==="odeme").reduce((s,x)=>s+num(x.tutar),0);
+  const tabToplam=tab==="gelir"?gelir:gider;
+  return pageShell("Ticari","Gelir / Gider","Tek sayfada iki sekme. Sağ üstte gelir − gider.",
+    `<button class="btn btn-p" onclick="openGG()">${ICONS.plus} Kayıt</button>
+     <button class="btn btn-s" onclick="exportSheet(db.finans.map(x=>({Tarih:x.tarih,Tip:x.tip,Cari:cariName(x.cariId),Tutar:x.tutar,Aciklama:x.aciklama})),'GelirGider','gelir_gider.xlsx')">${ICONS.download} Excel</button>${importBtn("impGG")}`,
+    `<div class="stat"><span>${tab==="gelir"?"Toplam gelir":"Toplam gider"}</span><b>${money(tabToplam)}</b></div>
+     <div class="stat accent"><span>Gelir − gider</span><b>${money(gelir-gider)}</b></div>`)+
+    `<div style="display:flex;gap:6px;margin-bottom:14px;background:#eef1f2;padding:4px;border-radius:8px;width:fit-content">
+      <button class="subtab ${tab==="gelir"?"on":""}" onclick="filters.gg='gelir';renderApp()">Gelir</button>
+      <button class="subtab ${tab==="gider"?"on":""}" onclick="filters.gg='gider';renderApp()">Gider</button>
+    </div>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih</th><th>Cari</th><th>Açıklama</th><th class="r">Tutar</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(x=>`<tr><td>${esc(x.tarih)}</td><td>${esc(cariName(x.cariId))}</td><td>${esc(x.aciklama||"")}</td><td class="r"><b>${money(x.tutar)}</b></td>
+      ${actions(x.id,`openGG('${x.id}')`,`delRec('finans','${x.id}')`)}</tr>`).join(""):emptyRow(5,"Kayıt yok"))+`</tbody></table></div>`;
+}
+function openGG(id){
+  const x=id?db.finans.find(i=>i.id===id):{tarih:today(),tip:filters.gg||"gelir"};
+  openModal(`<div class="modal-header"><h3>Gelir / gider</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveGG(this,'${id||""}')"><div class="form-grid">
+      <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(x.tarih||today())}"></div>
+      <div><label class="lbl">Tip</label><select class="inp" name="tip"><option value="gelir" ${x.tip==="gider"||x.tip==="odeme"?"":"selected"}>Gelir</option><option value="gider" ${x.tip==="gider"||x.tip==="odeme"?"selected":""}>Gider</option></select></div>
+      <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId"><option value="">—</option>${db.cariler.map(c=>`<option value="${c.id}" ${c.id===x.cariId?"selected":""}>${esc(c.unvan)}</option>`).join("")}</select></div>
+      <div><label class="lbl">Tutar</label><input class="inp" type="number" step="0.01" name="tutar" value="${esc(x.tutar??"")}" required></div>
+      <div class="full"><label class="lbl">Açıklama</label><input class="inp" name="aciklama" value="${esc(x.aciklama||"")}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"560px");
+}
+function saveGG(form,id){
   const fd=new FormData(form);
-  db.finans.push({id:uid("fn"),tarih:fd.get("tarih"),tip:fd.get("tip"),cariId:fd.get("cariId"),tutar:Number(fd.get("tutar")||0),yontem:fd.get("yontem"),aciklama:fd.get("aciklama")});
-  saveDb(); closeModal(); renderApp(); toast("Hareket kaydedildi");
+  const rec={id:id||uid("fn"),tarih:fd.get("tarih"),tip:fd.get("tip"),cariId:fd.get("cariId"),tutar:num(fd.get("tutar")),aciklama:fd.get("aciklama")};
+  if(id) db.finans=db.finans.map(x=>x.id===id?rec:x); else db.finans.push(rec);
+  saveDb(); closeModal(); renderApp(); toast("Kayıt alındı");
 }
-function delFin(id){if(!confirm("Silinsin mi?"))return;db.finans=db.finans.filter(x=>x.id!==id);saveDb();renderApp()}
+function impGG(file){importExcel(file,rows=>rows.map(r=>{
+  const tip=String(pick(r,["tip"])).toLowerCase().includes("gider")?"gider":"gelir";
+  db.finans.push({id:uid("fn"),tarih:toDate(pick(r,["tarih"])),tip,cariId:ensureCariByName(pick(r,["cari"])),tutar:num(pick(r,["tutar"])),aciklama:pick(r,["aciklama"])});
+  return 1}).length)}
+
+function viewKasa(){
+  const rows=[...db.kasa].sort((a,b)=>String(b.tarih).localeCompare(a.tarih));
+  const gir=rows.filter(x=>x.tip==="giris").reduce((s,x)=>s+num(x.tutar),0);
+  const cik=rows.filter(x=>x.tip!=="giris").reduce((s,x)=>s+num(x.tutar),0);
+  return pageShell("Ticari","Kasa","Kasa giriş ve çıkışları. Bakiye sağ üstte.",
+    `<button class="btn btn-p" onclick="openKasa()">${ICONS.plus} Hareket</button>
+     <button class="btn btn-s" onclick="exportSheet(db.kasa.map(x=>({Tarih:x.tarih,No:x.no,Tip:x.tip,Aciklama:x.aciklama,Tutar:x.tutar})),'Kasa','kasa.xlsx')">${ICONS.download} Excel</button>${importBtn("impKasa")}`,
+    `<div class="stat"><span>Giriş</span><b>${money(gir)}</b></div><div class="stat"><span>Çıkış</span><b>${money(cik)}</b></div><div class="stat accent"><span>Bakiye</span><b>${money(gir-cik)}</b></div>`)+
+    `<div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih / no</th><th>Tip</th><th>Açıklama</th><th class="r">Tutar</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(x=>`<tr><td>${esc(x.tarih)}<span class="cell-sub">${esc(x.no||"")}</span></td>
+      <td><span class="tag ${x.tip==="giris"?"success":"danger"}">${x.tip==="giris"?"Giriş":"Çıkış"}</span></td>
+      <td>${esc(x.aciklama||"")}</td><td class="r"><b>${money(x.tutar)}</b></td>
+      ${actions(x.id,`openKasa('${x.id}')`,`delRec('kasa','${x.id}')`)}</tr>`).join(""):emptyRow(5,"Hareket yok"))+`</tbody></table></div>`;
+}
+function openKasa(id){
+  const x=id?db.kasa.find(i=>i.id===id):{tarih:today(),no:nextNo(db.kasa,"KS"),tip:"giris"};
+  openModal(`<div class="modal-header"><h3>Kasa hareketi</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveKasa(this,'${id||""}')"><div class="form-grid">
+      <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(x.tarih||today())}"></div>
+      <div><label class="lbl">Fiş no</label><input class="inp" name="no" value="${esc(x.no||"")}"></div>
+      <div><label class="lbl">Tip</label><select class="inp" name="tip"><option value="giris" ${x.tip==="giris"?"selected":""}>Giriş</option><option value="cikis" ${x.tip!=="giris"?"selected":""}>Çıkış</option></select></div>
+      <div><label class="lbl">Tutar</label><input class="inp" type="number" step="0.01" name="tutar" value="${esc(x.tutar??"")}" required></div>
+      <div class="full"><label class="lbl">Açıklama</label><input class="inp" name="aciklama" value="${esc(x.aciklama||"")}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"520px");
+}
+function saveKasa(form,id){
+  const fd=new FormData(form);
+  const rec={id:id||uid("ks"),tarih:fd.get("tarih"),no:fd.get("no"),tip:fd.get("tip"),tutar:num(fd.get("tutar")),aciklama:fd.get("aciklama")};
+  if(id) db.kasa=db.kasa.map(x=>x.id===id?rec:x); else db.kasa.push(rec);
+  saveDb(); closeModal(); renderApp(); toast("Kasa hareketi kaydedildi");
+}
+function impKasa(file){importExcel(file,rows=>rows.map(r=>{
+  db.kasa.push({id:uid("ks"),tarih:toDate(pick(r,["tarih"])),no:pick(r,["fis no","no"]),tip:String(pick(r,["tip"])).toLowerCase().includes("cik")?"cikis":"giris",tutar:num(pick(r,["tutar"])),aciklama:pick(r,["aciklama"])});
+  return 1}).length)}
 
 function viewCekler(){
-  const rows=[...db.cekler].sort((a,b)=>String(a.vade).localeCompare(String(b.vade)));
-  const port=rows.filter(c=>c.durum==="Portföy").reduce((s,c)=>s+Number(c.tutar||0),0);
-  return `
-  <div class="page-head">
-    <div class="page-head-copy">
-      <div class="page-eyebrow">Ticari</div>
-      <h1>Çekler</h1>
-      <p class="page-sub">Portföy, tahsil, ciro ve iade durumlarıyla çek takibi.</p>
-      <div class="page-actions"><button class="btn btn-p" onclick="openCekForm()">${ICONS.plus} Çek gir</button>
-      <button class="btn btn-s" onclick="exportSheet(db.cekler.map(c=>({No:c.no,Banka:c.banka,Kesideci:c.kesideci,Cari:cariName(c.cariId),Tutar:c.tutar,Keside:c.keside,Vade:c.vade,Durum:c.durum})),'Cekler','cekler.xlsx')">Excel</button></div>
-    </div>
-    <div class="page-stats"><div class="stat"><span>Adet</span><b>${rows.length}</b></div><div class="stat accent"><span>Portföy</span><b>${money(port)}</b></div></div>
-  </div>
-  <div class="tblwrap"><table class="tbl">
-    <thead><tr><th>Çek</th><th>Cari / keşideci</th><th>Vade</th><th>Durum</th><th class="r">Tutar</th><th></th></tr></thead>
-    <tbody>${rows.length?rows.map(c=>`<tr>
-      <td><b>${esc(c.no)}</b><span class="cell-sub">${esc(c.banka)}</span></td>
-      <td>${esc(cariName(c.cariId))}<span class="cell-sub">${esc(c.kesideci||"")}</span></td>
-      <td>${esc(c.vade)}</td>
-      <td><span class="tag ${c.durum==="Tahsil"?"success":c.durum==="İade"?"danger":c.durum==="Portföy"?"warn":""}">${esc(c.durum)}</span></td>
-      <td class="r"><b>${money(c.tutar)}</b></td>
-      <td class="actions">
-        <button class="btn btn-xs btn-s" onclick="setCekDurum('${c.id}','Tahsil')">Tahsil</button>
-        <button class="btn btn-xs btn-s" onclick="setCekDurum('${c.id}','Ciro')">Ciro</button>
-        <button class="icon-btn" onclick="openCekForm('${c.id}')">${ICONS.save}</button>
-        <button class="icon-btn" onclick="delCek('${c.id}')">${ICONS.trash}</button>
-      </td>
-    </tr>`).join(""):`<tr><td class="empty" colspan="6">Çek yok</td></tr>`}</tbody>
-  </table></div>`;
+  const rows=db.cekler;
+  const port=rows.filter(c=>c.durum==="Portföy").reduce((s,c)=>s+num(c.tutar),0);
+  return pageShell("Ticari","Çekler","Portföy / tahsil / ciro.",
+    `<button class="btn btn-p" onclick="openCek()">${ICONS.plus} Çek</button>
+     <button class="btn btn-s" onclick="exportSheet(db.cekler.map(c=>({No:c.no,Banka:c.banka,Cari:cariName(c.cariId),Tutar:c.tutar,Vade:c.vade,Durum:c.durum})),'Cekler','cekler.xlsx')">${ICONS.download} Excel</button>${importBtn("impCek")}`,
+    `<div class="stat accent"><span>Portföy</span><b>${money(port)}</b></div>`)+
+    `<div class="tblwrap"><table class="tbl"><thead><tr><th>Çek</th><th>Cari</th><th>Vade</th><th>Durum</th><th class="r">Tutar</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(c=>`<tr><td><b>${esc(c.no)}</b><span class="cell-sub">${esc(c.banka)}</span></td><td>${esc(cariName(c.cariId))}</td>
+      <td>${esc(c.vade)}</td><td><span class="tag">${esc(c.durum)}</span></td><td class="r">${money(c.tutar)}</td>
+      ${actions(c.id,`openCek('${c.id}')`,`delRec('cekler','${c.id}')`)}</tr>`).join(""):emptyRow(6,"Çek yok"))+`</tbody></table></div>`;
 }
-function openCekForm(id){
+function openCek(id){
   const c=id?db.cekler.find(x=>x.id===id):{keside:today(),vade:today(),durum:"Portföy"};
   openModal(`<div class="modal-header"><h3>Çek</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
-    <form class="modal-body" onsubmit="event.preventDefault();saveCek(this,'${id||""}')">
-      <div class="form-grid">
-        <div><label class="lbl">Çek no</label><input class="inp" name="no" value="${esc(c.no||"")}" required></div>
-        <div><label class="lbl">Banka</label><input class="inp" name="banka" value="${esc(c.banka||"")}" required></div>
-        <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId">${db.cariler.map(x=>`<option value="${x.id}" ${x.id===c.cariId?"selected":""}>${esc(x.unvan)}</option>`).join("")}</select></div>
-        <div class="full"><label class="lbl">Keşideci</label><input class="inp" name="kesideci" value="${esc(c.kesideci||"")}"></div>
-        <div><label class="lbl">Tutar</label><input class="inp" type="number" step="0.01" name="tutar" value="${esc(c.tutar??"")}" required></div>
-        <div><label class="lbl">Durum</label><select class="inp" name="durum">${["Portföy","Tahsil","Ciro","İade","Karşılıksız"].map(d=>`<option ${d===c.durum?"selected":""}>${d}</option>`).join("")}</select></div>
-        <div><label class="lbl">Keşide</label><input class="inp" type="date" name="keside" value="${esc(c.keside||today())}"></div>
-        <div><label class="lbl">Vade</label><input class="inp" type="date" name="vade" value="${esc(c.vade||today())}"></div>
-        <div class="full"><label class="lbl">Açıklama</label><input class="inp" name="aciklama" value="${esc(c.aciklama||"")}"></div>
-      </div>
-      <div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div>
-    </form>`,"600px");
+    <form class="modal-body" onsubmit="event.preventDefault();saveCek(this,'${id||""}')"><div class="form-grid">
+      <div><label class="lbl">Çek no</label><input class="inp" name="no" value="${esc(c.no||"")}" required></div>
+      <div><label class="lbl">Banka</label><input class="inp" name="banka" value="${esc(c.banka||"")}"></div>
+      <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId">${db.cariler.map(x=>`<option value="${x.id}" ${x.id===c.cariId?"selected":""}>${esc(x.unvan)}</option>`).join("")}</select></div>
+      <div><label class="lbl">Tutar</label><input class="inp" type="number" step="0.01" name="tutar" value="${esc(c.tutar??"")}" required></div>
+      <div><label class="lbl">Durum</label><select class="inp" name="durum">${["Portföy","Tahsil","Ciro","İade"].map(d=>`<option ${d===c.durum?"selected":""}>${d}</option>`).join("")}</select></div>
+      <div><label class="lbl">Vade</label><input class="inp" type="date" name="vade" value="${esc(c.vade||today())}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"560px");
 }
 function saveCek(form,id){
   const fd=new FormData(form);
-  const rec={id:id||uid("ck"),no:fd.get("no"),banka:fd.get("banka"),cariId:fd.get("cariId"),kesideci:fd.get("kesideci"),tutar:Number(fd.get("tutar")||0),durum:fd.get("durum"),keside:fd.get("keside"),vade:fd.get("vade"),aciklama:fd.get("aciklama")};
+  const rec={id:id||uid("ck"),no:fd.get("no"),banka:fd.get("banka"),cariId:fd.get("cariId"),tutar:num(fd.get("tutar")),durum:fd.get("durum"),vade:fd.get("vade")};
   if(id) db.cekler=db.cekler.map(x=>x.id===id?rec:x); else db.cekler.push(rec);
   saveDb(); closeModal(); renderApp(); toast("Çek kaydedildi");
 }
-function setCekDurum(id,d){db.cekler=db.cekler.map(x=>x.id===id?{...x,durum:d}:x);saveDb();renderApp();toast("Durum: "+d)}
-function delCek(id){if(!confirm("Silinsin mi?"))return;db.cekler=db.cekler.filter(x=>x.id!==id);saveDb();renderApp()}
+function impCek(file){importExcel(file,rows=>rows.map(r=>{
+  db.cekler.push({id:uid("ck"),no:pick(r,["cek no","no"]),banka:pick(r,["banka"]),cariId:ensureCariByName(pick(r,["cari"])),tutar:num(pick(r,["tutar"])),durum:pick(r,["durum"])||"Portföy",vade:toDate(pick(r,["vade"]))});
+  return 1}).length)}
+
+function viewSanayi(){
+  const tab=filters.san||"cari";
+  return pageShell("Ticari","Sanayi giderleri","Bu cariler satış carilerinden ayrıdır. Ödeme fişi önizlenebilir.",
+    `<button class="btn btn-p" onclick="${tab==="cari"?"openSanCari()":"openSanH()"}">${ICONS.plus} ${tab==="cari"?"Cari":"Ödeme"}</button>
+     <button class="btn btn-s" onclick="exportSanayi()">${ICONS.download} Excel</button>${importBtn("impSanayi")}`)+
+    `<div style="display:flex;gap:6px;margin-bottom:14px;background:#eef1f2;padding:4px;border-radius:8px;width:fit-content">
+      <button class="subtab ${tab==="cari"?"on":""}" onclick="filters.san='cari';renderApp()">Cariler</button>
+      <button class="subtab ${tab==="odeme"?"on":""}" onclick="filters.san='odeme';renderApp()">Ödemeler</button>
+    </div>`+(tab==="cari"?sanCariTable():sanOdemeTable());
+}
+function sanCariTable(){
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Cari</th><th>Yetkili</th><th>Telefon</th><th></th></tr></thead><tbody>`+
+    (db.sanayiCariler.length?db.sanayiCariler.map(c=>`<tr><td><b>${esc(c.unvan)}</b></td><td>${esc(c.yetkili||"")}</td><td>${esc(c.telefon||"")}</td>
+      ${actions(c.id,`openSanCari('${c.id}')`,`delRec('sanayiCariler','${c.id}')`)}</tr>`).join(""):emptyRow(4,"Sanayi carisi yok"))+`</tbody></table></div>`;
+}
+function sanOdemeTable(){
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Tarih / fiş</th><th>Cari</th><th>Açıklama</th><th class="r">Miktar</th><th class="r">B. fiyat</th><th class="r">Alınan</th><th class="r">Verilen</th><th></th></tr></thead><tbody>`+
+    (db.sanayiHareket.length?db.sanayiHareket.map(x=>`<tr>
+      <td><button class="record-link" onclick="previewSan('${x.id}')">${esc(x.no)}</button><span class="cell-sub">${esc(x.tarih)}</span></td>
+      <td>${esc(sanayiCari(x.cariId)?.unvan||"—")}</td><td>${esc(x.aciklama||"")}</td>
+      <td class="r">${esc(x.miktar)}</td><td class="r">${money(x.birimFiyat)}</td><td class="r">${money(x.alinan)}</td><td class="r">${money(x.verilen)}</td>
+      ${actions(x.id,`openSanH('${x.id}')`,`delRec('sanayiHareket','${x.id}')`,`previewSan('${x.id}')`)}</tr>`).join(""):emptyRow(8,"Ödeme yok"))+`</tbody></table></div>`;
+}
+function openSanCari(id){
+  const c=id?sanayiCari(id):{};
+  openModal(`<div class="modal-header"><h3>Sanayi carisi</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveSanCari(this,'${id||""}')">
+      <label class="lbl">Unvan</label><input class="inp" name="unvan" value="${esc(c.unvan||"")}" required style="margin-bottom:10px">
+      <label class="lbl">Yetkili</label><input class="inp" name="yetkili" value="${esc(c.yetkili||"")}" style="margin-bottom:10px">
+      <label class="lbl">Telefon</label><input class="inp" name="telefon" value="${esc(c.telefon||"")}">
+      <div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div>
+    </form>`,"480px");
+}
+function saveSanCari(form,id){
+  const fd=new FormData(form);
+  const rec={id:id||uid("sc"),unvan:fd.get("unvan"),yetkili:fd.get("yetkili"),telefon:fd.get("telefon")};
+  if(id) db.sanayiCariler=db.sanayiCariler.map(x=>x.id===id?rec:x); else db.sanayiCariler.push(rec);
+  saveDb(); closeModal(); renderApp(); toast("Sanayi carisi kaydedildi");
+}
+function openSanH(id){
+  const x=id?db.sanayiHareket.find(i=>i.id===id):{tarih:today(),no:nextNo(db.sanayiHareket,"SG")};
+  openModal(`<div class="modal-header"><h3>Sanayi ödemesi</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveSanH(this,'${id||""}')"><div class="form-grid">
+      <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(x.tarih||today())}"></div>
+      <div><label class="lbl">Fiş / fatura no</label><input class="inp" name="no" value="${esc(x.no||"")}"></div>
+      <div class="full"><label class="lbl">Cari</label><select class="inp" name="cariId">${db.sanayiCariler.map(c=>`<option value="${c.id}" ${c.id===x.cariId?"selected":""}>${esc(c.unvan)}</option>`).join("")}</select></div>
+      <div class="full"><label class="lbl">Açıklama</label><input class="inp" name="aciklama" value="${esc(x.aciklama||"")}"></div>
+      <div><label class="lbl">Miktar</label><input class="inp" name="miktar" type="number" step="0.001" value="${esc(x.miktar??"")}"></div>
+      <div><label class="lbl">Birim fiyat</label><input class="inp" name="birimFiyat" type="number" step="0.01" value="${esc(x.birimFiyat??"")}"></div>
+      <div><label class="lbl">Alınan tutar</label><input class="inp" name="alinan" type="number" step="0.01" value="${esc(x.alinan??"")}"></div>
+      <div><label class="lbl">Verilen tutar</label><input class="inp" name="verilen" type="number" step="0.01" value="${esc(x.verilen??"")}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"640px");
+}
+function saveSanH(form,id){
+  const fd=new FormData(form);
+  const rec={id:id||uid("sh"),tarih:fd.get("tarih"),no:fd.get("no"),cariId:fd.get("cariId"),aciklama:fd.get("aciklama"),miktar:num(fd.get("miktar")),birimFiyat:num(fd.get("birimFiyat")),alinan:num(fd.get("alinan")),verilen:num(fd.get("verilen"))};
+  if(id) db.sanayiHareket=db.sanayiHareket.map(x=>x.id===id?rec:x); else db.sanayiHareket.push(rec);
+  saveDb(); closeModal(); renderApp(); toast("Ödeme kaydedildi"); previewSan(rec.id);
+}
+function previewSan(id){
+  const x=db.sanayiHareket.find(i=>i.id===id); if(!x) return;
+  previewDoc("Sanayi gider fişi", ticketBox("SANAYİ GİDER FİŞİ",[
+    ["Fiş / fatura",esc(x.no)],["Tarih",esc(x.tarih)],["Cari",esc(sanayiCari(x.cariId)?.unvan||"—")],["Açıklama",esc(x.aciklama||"—")],
+    ["Miktar",esc(x.miktar)],["Birim fiyat",money(x.birimFiyat)],["Alınan",money(x.alinan)],["Verilen",money(x.verilen)]
+  ]));
+}
+function exportSanayi(){
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.sanayiCariler.map(c=>({Unvan:c.unvan,Yetkili:c.yetkili,Telefon:c.telefon}))),"Cariler");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.sanayiHareket.map(x=>({Tarih:x.tarih,No:x.no,Cari:sanayiCari(x.cariId)?.unvan,Aciklama:x.aciklama,Miktar:x.miktar,"Birim Fiyat":x.birimFiyat,Alinan:x.alinan,Verilen:x.verilen}))),"Odemeler");
+  XLSX.writeFile(wb,"sanayi_giderleri.xlsx");
+}
+function impSanayi(file){importExcel(file,rows=>rows.map(r=>{
+  const unvan=pick(r,["unvan","cari"]);
+  if(unvan && !pick(r,["tutar","verilen","alinan","fis"])){
+    if(!(db.sanayiCariler||[]).some(c=>c.unvan.toLowerCase()===unvan.toLowerCase()))
+      db.sanayiCariler.push({id:uid("sc"),unvan,yetkili:pick(r,["yetkili"]),telefon:pick(r,["telefon"])});
+  }else{
+    let sc=(db.sanayiCariler||[]).find(c=>c.unvan.toLowerCase()===String(unvan).toLowerCase());
+    if(!sc && unvan){sc={id:uid("sc"),unvan,yetkili:"",telefon:""};db.sanayiCariler.push(sc)}
+    db.sanayiHareket.push({id:uid("sh"),tarih:toDate(pick(r,["tarih"])),no:pick(r,["fis","fatura","no"]),cariId:sc?.id||"",aciklama:pick(r,["aciklama"]),miktar:num(pick(r,["miktar"])),birimFiyat:num(pick(r,["birim fiyat"])),alinan:num(pick(r,["alinan"])),verilen:num(pick(r,["verilen"]))});
+  }
+  return 1}).length)}
+
+function viewPersonel(){
+  const tab=filters.per||"ozluk";
+  const tabs=[["ozluk","Özlük dosyaları"],["izin","İzin / izin formu"],["giris","İşe giriş / çıkış"],["maas","Maaş ödemesi"]];
+  return pageShell("İnsan Kaynakları","Personel","Dört sekme: özlük, izin, giriş-çıkış, maaş.",
+    `<button class="btn btn-p" onclick="openPerTab()">${ICONS.plus} Yeni</button>
+     <button class="btn btn-s" onclick="exportPersonel()">${ICONS.download} Excel</button>${importBtn("impPersonel")}`)+
+    `<div style="display:flex;gap:6px;margin-bottom:14px;background:#eef1f2;padding:4px;border-radius:8px;width:fit-content;flex-wrap:wrap">
+      ${tabs.map(([k,l])=>`<button class="subtab ${tab===k?"on":""}" onclick="filters.per='${k}';renderApp()">${l}</button>`).join("")}
+    </div>${tab==="ozluk"?tblOzluk():tab==="izin"?tblIzin():tab==="giris"?tblGiris():tblMaas()}`;
+}
+function tblOzluk(){
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Ad</th><th>TC</th><th>Görev</th><th>İşe giriş</th><th>Durum</th><th></th></tr></thead><tbody>`+
+    (db.personel.length?db.personel.map(p=>`<tr><td><b>${esc(p.ad)}</b></td><td>${esc(p.tc||"")}</td><td>${esc(p.gorev||"")}</td><td>${esc(p.giris||"")}</td>
+      <td><span class="tag">${esc(p.durum||"Çalışıyor")}</span></td>${actions(p.id,`openOzluk('${p.id}')`,`delRec('personel','${p.id}')`)}</tr>`).join(""):emptyRow(6,"Personel yok"))+`</tbody></table></div>`;
+}
+function tblIzin(){
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Personel</th><th>Tip</th><th>Başlangıç</th><th>Bitiş</th><th>Gün</th><th></th></tr></thead><tbody>`+
+    (db.izinler.length?db.izinler.map(x=>`<tr><td>${esc(personelById(x.personelId)?.ad||"—")}</td><td>${esc(x.tip)}</td><td>${esc(x.bas)}</td><td>${esc(x.bit)}</td><td>${esc(x.gun)}</td>
+      ${actions(x.id,`openIzin('${x.id}')`,`delRec('izinler','${x.id}')`,`previewIzin('${x.id}')`)}</tr>`).join(""):emptyRow(6,"İzin yok"))+`</tbody></table></div>`;
+}
+function tblGiris(){
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Personel</th><th>İşlem</th><th>Tarih</th><th>Neden</th><th></th></tr></thead><tbody>`+
+    (db.girisCikis.length?db.girisCikis.map(x=>`<tr><td>${esc(personelById(x.personelId)?.ad||"—")}</td><td>${esc(x.tip)}</td><td>${esc(x.tarih)}</td><td>${esc(x.neden||"")}</td>
+      ${actions(x.id,`openGC('${x.id}')`,`delRec('girisCikis','${x.id}')`)}</tr>`).join(""):emptyRow(5,"Kayıt yok"))+`</tbody></table></div>`;
+}
+function tblMaas(){
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Personel</th><th>Dönem</th><th class="r">Brüt</th><th class="r">Kesinti</th><th class="r">Net</th><th>Durum</th><th></th></tr></thead><tbody>`+
+    (db.maaslar.length?db.maaslar.map(x=>`<tr><td>${esc(personelById(x.personelId)?.ad||"—")}</td><td>${esc(x.donem)}</td><td class="r">${money(x.brut)}</td><td class="r">${money(x.kesinti)}</td><td class="r"><b>${money(x.net)}</b></td>
+      <td>${esc(x.durum)}</td>${actions(x.id,`openMaas('${x.id}')`,`delRec('maaslar','${x.id}')`)}</tr>`).join(""):emptyRow(7,"Maaş yok"))+`</tbody></table></div>`;
+}
+function openPerTab(){const t=filters.per||"ozluk"; if(t==="izin") openIzin(); else if(t==="giris") openGC(); else if(t==="maas") openMaas(); else openOzluk()}
+function perSel(sel){return db.personel.map(p=>`<option value="${p.id}" ${p.id===sel?"selected":""}>${esc(p.ad)}</option>`).join("")}
+function openOzluk(id){
+  const p=id?personelById(id):{durum:"Çalışıyor"};
+  openModal(`<div class="modal-header"><h3>Özlük</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveOzluk(this,'${id||""}')"><div class="form-grid">
+      <div class="full"><label class="lbl">Ad soyad</label><input class="inp" name="ad" value="${esc(p.ad||"")}" required></div>
+      <div><label class="lbl">TC</label><input class="inp" name="tc" value="${esc(p.tc||"")}"></div>
+      <div><label class="lbl">Görev</label><input class="inp" name="gorev" value="${esc(p.gorev||"")}"></div>
+      <div><label class="lbl">Telefon</label><input class="inp" name="telefon" value="${esc(p.telefon||"")}"></div>
+      <div><label class="lbl">İşe giriş</label><input class="inp" type="date" name="giris" value="${esc(p.giris||"")}"></div>
+      <div class="full"><label class="lbl">Durum</label><select class="inp" name="durum">${["Çalışıyor","Ayrıldı"].map(d=>`<option ${d===p.durum?"selected":""}>${d}</option>`).join("")}</select></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"560px");
+}
+function saveOzluk(form,id){const fd=new FormData(form);const rec={id:id||uid("p"),ad:fd.get("ad"),tc:fd.get("tc"),gorev:fd.get("gorev"),telefon:fd.get("telefon"),giris:fd.get("giris"),durum:fd.get("durum")};if(id)db.personel=db.personel.map(x=>x.id===id?rec:x);else db.personel.push(rec);saveDb();closeModal();renderApp();toast("Özlük kaydedildi")}
+function openIzin(id){
+  const x=id?db.izinler.find(i=>i.id===id):{tip:"Yıllık"};
+  openModal(`<div class="modal-header"><h3>İzin formu</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveIzin(this,'${id||""}')"><div class="form-grid">
+      <div class="full"><label class="lbl">Personel</label><select class="inp" name="personelId">${perSel(x.personelId)}</select></div>
+      <div><label class="lbl">Tip</label><select class="inp" name="tip">${["Yıllık","Mazeret","Rapor","Ücretsiz"].map(t=>`<option ${t===x.tip?"selected":""}>${t}</option>`).join("")}</select></div>
+      <div><label class="lbl">Gün</label><input class="inp" name="gun" type="number" step="0.5" value="${esc(x.gun??"")}"></div>
+      <div><label class="lbl">Başlangıç</label><input class="inp" type="date" name="bas" value="${esc(x.bas||"")}"></div>
+      <div><label class="lbl">Bitiş</label><input class="inp" type="date" name="bit" value="${esc(x.bit||"")}"></div>
+      <div class="full"><label class="lbl">Açıklama</label><input class="inp" name="aciklama" value="${esc(x.aciklama||"")}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"560px");
+}
+function saveIzin(form,id){const fd=new FormData(form);const rec={id:id||uid("iz"),personelId:fd.get("personelId"),tip:fd.get("tip"),gun:num(fd.get("gun")),bas:fd.get("bas"),bit:fd.get("bit"),aciklama:fd.get("aciklama")};if(id)db.izinler=db.izinler.map(x=>x.id===id?rec:x);else db.izinler.push(rec);saveDb();closeModal();renderApp();toast("İzin kaydedildi");previewIzin(rec.id)}
+function previewIzin(id){const x=db.izinler.find(i=>i.id===id);if(!x)return;previewDoc("İzin formu",ticketBox("İZİN FORMU",[["Personel",esc(personelById(x.personelId)?.ad||"—")],["Tip",esc(x.tip)],["Başlangıç",esc(x.bas)],["Bitiş",esc(x.bit)],["Gün",esc(x.gun)],["Açıklama",esc(x.aciklama||"—")]]))}
+function openGC(id){
+  const x=id?db.girisCikis.find(i=>i.id===id):{tarih:today(),tip:"İşe giriş"};
+  openModal(`<div class="modal-header"><h3>Giriş / çıkış</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveGC(this,'${id||""}')"><div class="form-grid">
+      <div class="full"><label class="lbl">Personel</label><select class="inp" name="personelId">${perSel(x.personelId)}</select></div>
+      <div><label class="lbl">İşlem</label><select class="inp" name="tip"><option ${x.tip==="İşe giriş"?"selected":""}>İşe giriş</option><option ${x.tip==="İşten çıkış"?"selected":""}>İşten çıkış</option></select></div>
+      <div><label class="lbl">Tarih</label><input class="inp" type="date" name="tarih" value="${esc(x.tarih||today())}"></div>
+      <div class="full"><label class="lbl">Neden</label><input class="inp" name="neden" value="${esc(x.neden||"")}"></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"520px");
+}
+function saveGC(form,id){const fd=new FormData(form);const rec={id:id||uid("gc"),personelId:fd.get("personelId"),tip:fd.get("tip"),tarih:fd.get("tarih"),neden:fd.get("neden")};if(id)db.girisCikis=db.girisCikis.map(x=>x.id===id?rec:x);else db.girisCikis.push(rec);saveDb();closeModal();renderApp();toast("Kayıt alındı")}
+function openMaas(id){
+  const x=id?db.maaslar.find(i=>i.id===id):{donem:today().slice(0,7),durum:"Ödendi"};
+  openModal(`<div class="modal-header"><h3>Maaş</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <form class="modal-body" onsubmit="event.preventDefault();saveMaas(this,'${id||""}')"><div class="form-grid">
+      <div class="full"><label class="lbl">Personel</label><select class="inp" name="personelId">${perSel(x.personelId)}</select></div>
+      <div><label class="lbl">Dönem</label><input class="inp" name="donem" placeholder="2026-09" value="${esc(x.donem||"")}"></div>
+      <div><label class="lbl">Brüt</label><input class="inp" type="number" step="0.01" name="brut" value="${esc(x.brut??"")}"></div>
+      <div><label class="lbl">Kesinti</label><input class="inp" type="number" step="0.01" name="kesinti" value="${esc(x.kesinti??"")}"></div>
+      <div><label class="lbl">Net</label><input class="inp" type="number" step="0.01" name="net" value="${esc(x.net??"")}"></div>
+      <div class="full"><label class="lbl">Durum</label><select class="inp" name="durum"><option>Ödendi</option><option ${x.durum==="Bekliyor"?"selected":""}>Bekliyor</option></select></div>
+    </div><div class="modal-footer" style="margin:18px -23px -23px"><button type="button" class="btn btn-s" onclick="closeModal()">Vazgeç</button><button class="btn btn-p">Kaydet</button></div></form>`,"560px");
+}
+function saveMaas(form,id){const fd=new FormData(form);const rec={id:id||uid("m"),personelId:fd.get("personelId"),donem:fd.get("donem"),brut:num(fd.get("brut")),kesinti:num(fd.get("kesinti")),net:num(fd.get("net")),durum:fd.get("durum")};if(id)db.maaslar=db.maaslar.map(x=>x.id===id?rec:x);else db.maaslar.push(rec);saveDb();closeModal();renderApp();toast("Maaş kaydedildi")}
+function exportPersonel(){
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.personel.map(p=>({Ad:p.ad,TC:p.tc,Gorev:p.gorev,Giris:p.giris,Durum:p.durum}))),"Ozluk");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.izinler.map(x=>({Personel:personelById(x.personelId)?.ad,Tip:x.tip,Bas:x.bas,Bit:x.bit,Gun:x.gun}))),"Izin");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.girisCikis.map(x=>({Personel:personelById(x.personelId)?.ad,Tip:x.tip,Tarih:x.tarih,Neden:x.neden}))),"GirisCikis");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(db.maaslar.map(x=>({Personel:personelById(x.personelId)?.ad,Donem:x.donem,Brut:x.brut,Kesinti:x.kesinti,Net:x.net,Durum:x.durum}))),"Maas");
+  XLSX.writeFile(wb,"personel.xlsx");
+}
+function impPersonel(file){importExcel(file,rows=>rows.map(r=>{
+  const ad=pick(r,["ad","ad soyad","personel"]);
+  if(ad && !pick(r,["brut","net","baslangic","tip"])){
+    if(!(db.personel||[]).some(p=>p.ad.toLowerCase()===ad.toLowerCase()))
+      db.personel.push({id:uid("p"),ad,tc:pick(r,["tc"]),gorev:pick(r,["gorev"]),telefon:pick(r,["telefon"]),giris:toDate(pick(r,["ise giris","giris"])),durum:pick(r,["durum"])||"Çalışıyor"});
+  }
+  return 1}).length)}
 
 function viewAyarlar(){
-  const s=db.settings;
-  const u=activeUser();
-  const tab=filters.ayar||"hesap";
-  const tabs=[["hesap","Hesap / e-posta"],["tema","Tema"],["kilavuz","Kullanım kılavuzu"],["hakkinda","Hakkında"]];
-  return `
-  <div class="page-head"><div class="page-head-copy">
-    <div class="page-eyebrow">Sistem</div><h1>Ayarlar</h1>
-    <p class="page-sub">Giriş bilgisi, görünüm, kılavuz ve uygulama bilgisi.</p>
-  </div></div>
-  <div style="display:flex;gap:6px;margin-bottom:18px;background:#eef1f2;padding:4px;border-radius:8px;width:fit-content">
-    ${tabs.map(([k,l])=>`<button class="subtab ${tab===k?"on":""}" onclick="filters.ayar='${k}';renderApp()">${l}</button>`).join("")}
-  </div>
-  ${tab==="hesap"?`
-    <div class="card" style="padding:22px;max-width:560px">
-      <form onsubmit="event.preventDefault();saveSettings(this)">
-        <div class="form-grid">
-          <div class="full"><label class="lbl">İşletme</label><input class="inp" name="company" value="${esc(s.company)}"></div>
-          <div class="full"><label class="lbl">Tesis / çalışma alanı</label><input class="inp" name="workspace" value="${esc(s.workspace)}"></div>
-          <div class="full"><label class="lbl">Kullanıcı adı</label><input class="inp" name="userName" value="${esc(u.name||s.userName||"")}"></div>
-          <div class="full"><label class="lbl">E-posta</label><input class="inp" type="email" name="email" value="${esc(u.email||s.email||"")}" required></div>
-          <div class="full"><label class="lbl">Mevcut şifre</label><input class="inp" type="password" name="oldPass" placeholder="Şifre değiştirecekseniz doldurun"></div>
-          <div><label class="lbl">Yeni şifre</label><input class="inp" type="password" name="newPass"></div>
-          <div><label class="lbl">Yeni şifre (tekrar)</label><input class="inp" type="password" name="newPass2"></div>
-        </div>
-        <div class="page-actions"><button class="btn btn-p">Kaydet</button></div>
-      </form>
-    </div>`:""}
-  ${tab==="tema"?`
-    <div class="theme-grid" style="max-width:640px">
-      <button class="theme-opt ${s.theme==="default"?"on":""}" onclick="setTheme('default')"><div class="theme-swatch" style="background:linear-gradient(90deg,#f7f8fa,#267660)"></div><b>Kurumsal açık</b><div class="field-note">Varsayılan yeşil / mürekkep</div></button>
-      <button class="theme-opt ${s.theme==="dark"?"on":""}" onclick="setTheme('dark')"><div class="theme-swatch" style="background:linear-gradient(90deg,#161a1d,#6fb394)"></div><b>Koyu</b><div class="field-note">Gece vardiyası</div></button>
-      <button class="theme-opt ${s.theme==="stone"?"on":""}" onclick="setTheme('stone')"><div class="theme-swatch" style="background:linear-gradient(90deg,#f3efe8,#8a6a3b)"></div><b>Taş</b><div class="field-note">Ocak tonları</div></button>
-    </div>`:""}
-  ${tab==="kilavuz"?`
-    <div class="card guide" style="padding:22px;max-width:760px">
-      <h3>1. Giriş</h3><p>Demo hesap yoktur. İlk açılışta hesap oluşturun. E-posta ve şifre Ayarlar › Hesap bölümünden güncellenir. Oturum tarayıcı kapanınca düşer.</p>
-      <h3>2. Dashboard</h3><p>Tonaj, satış tutarı, cari alacak, son fişler ve portföy çekleri.</p>
-      <h3>3. Kantar fişleri</h3>
-      <ul><li>Brüt ve dara ayrı alanlardır; net otomatik hesaplanır.</li><li>Birim fiyat ve tonaj formda ayrı satırdadır.</li><li>Kaydettikten sonra kantar fişi önizlemesi açılır; yazdırılabilir.</li></ul>
-      <h3>4. Cariler</h3>
-      <ul><li>Unvana tıklayınca satış listesi ve bakiye görülür.</li><li>“Bu cariyi Excel’e al” satış + finans sayfalarını üretir.</li><li>Toplu Excel: Cariler özeti + tüm satışlar.</li></ul>
-      <h3>5. Tesis çalışma</h3><p>Süre alanı Çalışılmayan süre’dir. 01:30 veya 1.5 yazılabilir.</p>
-      <h3>6. Çekler</h3><p>Portföy / tahsil / ciro / iade. Tahsil edilen çek cari bakiyeden düşer.</p>
-      <h3>7. Asistan</h3><p>Uygulama modüllerini ve güncel kayıt özetini bilir. Soruyu doğal dilde yazın.</p>
-      <h3>8. Yedek</h3><p>Sol alttan JSON yedek alın. Ayarlar › Hakkında üzerinden geri yükleyin.</p>
-    </div>`:""}
-  ${tab==="hakkinda"?`
-    <div class="card" style="padding:22px;max-width:640px">
-      <h3 style="margin-top:0">Mıcır Ocağı ERP</h3>
-      <p class="page-sub">Sürüm 2.1 — kantar, cari, finans, çek, tesis ve asistan. Veriler tarayıcı localStorage alanında tutulur.</p>
-      <p class="field-note">${esc(s.about||"")}</p>
-      <div class="page-actions">
-        <button class="btn btn-s" onclick="backupDownload()">${ICONS.download} Yedek indir</button>
-        <label class="btn btn-s">${ICONS.file} Yedek yükle<input type="file" accept="application/json" hidden onchange="restoreBackup(this.files[0])"></label>
-      </div>
-    </div>`:""}`;
+  const s=db.settings,u=activeUser(),tab=filters.ayar||"hesap";
+  const tabs=[["hesap","Kullanıcı"],["tema","Tema"],["kilavuz","Kılavuz"],["hakkinda","Hakkında"]];
+  return pageShell("Sistem","Ayarlar","Kullanıcı güncelleme, tema, kılavuz ve hakkında.")+
+    `<div style="display:flex;gap:6px;margin-bottom:18px;background:#eef1f2;padding:4px;border-radius:8px;width:fit-content">${tabs.map(([k,l])=>`<button class="subtab ${tab===k?"on":""}" onclick="filters.ayar='${k}';renderApp()">${l}</button>`).join("")}</div>`+
+    (tab==="hesap"?`<div class="card" style="padding:22px;max-width:560px"><form onsubmit="event.preventDefault();saveSettings(this)">
+      <div class="form-grid">
+        <div class="full"><label class="lbl">İşletme</label><input class="inp" name="company" value="${esc(s.company)}"></div>
+        <div class="full"><label class="lbl">Tesis</label><input class="inp" name="workspace" value="${esc(s.workspace)}"></div>
+        <div class="full"><label class="lbl">Kullanıcı adı</label><input class="inp" name="userName" value="${esc(u.name||s.userName||"")}"></div>
+        <div class="full"><label class="lbl">E-posta</label><input class="inp" type="email" name="email" value="${esc(u.email||"")}" required></div>
+        <div class="full"><label class="lbl">Mevcut şifre</label><input class="inp" type="password" name="oldPass"></div>
+        <div><label class="lbl">Yeni şifre</label><input class="inp" type="password" name="newPass"></div>
+        <div><label class="lbl">Tekrar</label><input class="inp" type="password" name="newPass2"></div>
+      </div><div class="page-actions"><button class="btn btn-p">Güncelle</button></div></form></div>`:"")+
+    (tab==="tema"?`<div class="theme-grid" style="max-width:640px">
+      <button class="theme-opt ${s.theme==="default"?"on":""}" onclick="setTheme('default')"><div class="theme-swatch" style="background:linear-gradient(90deg,#f7f8fa,#267660)"></div><b>Kurumsal açık</b></button>
+      <button class="theme-opt ${s.theme==="dark"?"on":""}" onclick="setTheme('dark')"><div class="theme-swatch" style="background:linear-gradient(90deg,#161a1d,#6fb394)"></div><b>Koyu</b></button>
+      <button class="theme-opt ${s.theme==="stone"?"on":""}" onclick="setTheme('stone')"><div class="theme-swatch" style="background:linear-gradient(90deg,#f3efe8,#8a6a3b)"></div><b>Taş</b></button>
+    </div>`:"")+
+    (tab==="kilavuz"?`<div class="card guide" style="padding:22px;max-width:760px">
+      <h3>Giriş</h3><p>Demo hesap yok. Hesap oluşturup girin. Şifre bu sayfadan değişir.</p>
+      <h3>Kantar</h3><p>Tarih, fiş no, cari, ürün, tonaj, birim fiyat. KDV’siz = tonaj × birim fiyat. KDV’li = KDV’siz × 1,20. Kayıttan sonra fiş önizlemesi açılır.</p>
+      <h3>Cari</h3><p>Detayda fiş no filtresi, sağ üstte o carinin tonaj / KDV’siz / KDV’li toplamı. Satışlar Excel’e alınır.</p>
+      <h3>Yakıt</h3><p>Saat alanı normal yazı satırıdır.</p>
+      <h3>Tesis</h3><p>İşe başlama, paydos, manuel saat ve birden fazla açıklama satırı.</p>
+      <h3>Gelir / gider</h3><p>Sekmeler ayrı toplam verir. Sağ üstte gelir − gider.</p>
+      <h3>Sanayi giderleri</h3><p>Cariler satış carilerinden ayrıdır.</p>
+      <h3>Excel</h3><p>Her listede içe ve dışa aktarma vardır. Sütun adları Türkçe eşleşir (Tarih, Fiş No, Cari…).</p>
+    </div>`:"")+
+    (tab==="hakkinda"?`<div class="card" style="padding:22px;max-width:640px"><h3 style="margin-top:0">Mıcır Ocağı ERP</h3>
+      <p class="page-sub">Sürüm 3 — kantar, yakıt, tesis, irsaliye, cari, fatura, gelir-gider, kasa, çek, sanayi, personel, asistan.</p>
+      <div class="page-actions"><button class="btn btn-s" onclick="backupDownload()">Yedek indir</button>
+      <label class="btn btn-s">Yedek yükle<input type="file" accept="application/json" hidden onchange="restoreBackup(this.files[0])"></label></div></div>`:"");
 }
 function saveSettings(form){
-  const fd=new FormData(form);
-  const u=activeUser();
-  const oldEmail=String(u.email||"").toLowerCase();
-  db.settings.company=fd.get("company");
-  db.settings.workspace=fd.get("workspace");
-  db.settings.userName=fd.get("userName");
-  const newEmail=String(fd.get("email")||"").trim().toLowerCase();
-  db.settings.email=newEmail;
-  const oldP=fd.get("oldPass"), n1=fd.get("newPass"), n2=fd.get("newPass2");
+  const fd=new FormData(form), u=activeUser(), oldEmail=String(u.email||"").toLowerCase();
+  db.settings.company=fd.get("company"); db.settings.workspace=fd.get("workspace"); db.settings.userName=fd.get("userName");
+  const newEmail=String(fd.get("email")||"").trim().toLowerCase(); db.settings.email=newEmail;
   let newPass=u.password||db.settings.password;
+  const oldP=fd.get("oldPass"), n1=fd.get("newPass"), n2=fd.get("newPass2");
   if(n1||n2||oldP){
     if(oldP!==(u.password||db.settings.password)){toast("Mevcut şifre hatalı",true);return}
     if(n1.length<6){toast("Yeni şifre en az 6 karakter",true);return}
-    if(n1!==n2){toast("Yeni şifreler eşleşmiyor",true);return}
-    newPass=n1;
-    db.settings.password=n1;
+    if(n1!==n2){toast("Şifreler eşleşmiyor",true);return}
+    newPass=n1; db.settings.password=n1;
   }
-  db.users=(db.users||[]).map(x=>{
-    if(String(x.email).toLowerCase()!==oldEmail) return x;
-    return {...x,name:fd.get("userName"),email:newEmail,password:newPass};
-  });
-  if(newEmail) setSession(newEmail);
-  saveDb(); renderApp(); toast("Ayarlar güncellendi");
+  db.users=(db.users||[]).map(x=>String(x.email).toLowerCase()===oldEmail?{...x,name:fd.get("userName"),email:newEmail,password:newPass}:x);
+  if(newEmail) setSession(newEmail); saveDb(); renderApp(); toast("Kullanıcı güncellendi");
 }
 function setTheme(t){db.settings.theme=t;saveDb();renderApp();toast("Tema uygulandı")}
 
-let aiLog=[{role:"bot",text:"Mıcır Ocağı ERP asistanıyım. Dashboard, kantar fişi, cari Excel, tesis duruşu, çek, finans ve ayarlar dahil tüm modülleri biliyorum. Güncel kayıtlarınıza da bakabilirim."}];
+let aiLog=[{role:"bot",text:"Mıcır Ocağı ERP asistanıyım. Dashboard, kantar (KDV %20), yakıt, tesis, irsaliye, cari, fatura, gelir-gider, kasa, çek, sanayi giderleri, personel ve ayarları biliyorum."}];
 function viewAsistan(){
-  return `
-  <div class="page-head"><div class="page-head-copy">
-    <div class="page-eyebrow">Sistem</div><h1>Asistan</h1>
-    <p class="page-sub">Uygulamanın sayfaları, alanları ve elinizdeki veri özeti.</p>
-  </div></div>
-  <div class="ai-wrap">
-    <div class="card ai-chat">
+  return pageShell("Sistem","Asistan","Modüller ve güncel kayıt özeti.")+
+    `<div class="ai-wrap"><div class="card ai-chat">
       <div class="ai-log" id="aiLog">${aiLog.map(m=>`<div class="ai-msg ${m.role}">${esc(m.text)}</div>`).join("")}</div>
-      <form class="ai-input" onsubmit="event.preventDefault();askAI(this)">
-        <input class="inp" name="q" placeholder="Örn. bugün kaç ton çıktı? kantar fişi nasıl kesilir?" required>
-        <button class="btn btn-p">Gönder</button>
-      </form>
+      <form class="ai-input" onsubmit="event.preventDefault();askAI(this)"><input class="inp" name="q" required placeholder="Sorunuzu yazın"><button class="btn btn-p">Gönder</button></form>
     </div>
-    <div class="card" style="padding:16px">
-      <div class="section-label" style="margin-top:0">Hızlı sorular</div>
-      ${["Kantar fişi nasıl kesilir?","Cari bakiyesi nasıl hesaplanır?","Toplu Excel nereden alınır?","Çalışılmayan süre nereye yazılır?","Çek tahsil edilince ne olur?","Şifreyi nasıl değiştiririm?"].map(q=>`<button class="btn btn-s" style="width:100%;margin-bottom:6px;white-space:normal;text-align:left" onclick="askAIText('${q.replace(/'/g,"")}')">${q}</button>`).join("")}
-    </div>
-  </div>`;
+    <div class="card" style="padding:16px">${["Kantar KDV nasıl hesaplanır?","Cari detayında ne görünür?","Yakıt saati nasıl girilir?","Sanayi carisi satış carisinden farklı mı?","Personel sekmeleri neler?"].map(q=>`<button class="btn btn-s" style="width:100%;margin-bottom:6px;white-space:normal;text-align:left" onclick="askAIText('${q}')">${q}</button>`).join("")}</div></div>`;
 }
 function askAI(form){const q=form.q.value.trim();form.reset();askAIText(q)}
-function askAIText(q){
-  aiLog.push({role:"user",text:q});
-  aiLog.push({role:"bot",text:answerAI(q)});
-  renderApp();
-  const log=document.getElementById("aiLog"); if(log) log.scrollTop=log.scrollHeight;
-}
+function askAIText(q){aiLog.push({role:"user",text:q});aiLog.push({role:"bot",text:answerAI(q)});renderApp();const log=document.getElementById("aiLog");if(log)log.scrollTop=log.scrollHeight}
 function answerAI(q){
   const s=q.toLowerCase();
-  const tonaj=db.fisler.reduce((a,f)=>a+Number(f.net||0),0);
-  const satis=db.fisler.reduce((a,f)=>a+fisTutar(f),0);
-  const alacak=db.cariler.reduce((a,c)=>a+Math.max(0,cariBakiye(c.id)),0);
-  if(/nasıl|nereye|nereden|kılavuz|kilavuz/.test(s) && /kantar|fiş|fis/.test(s))
-    return "Kantar Fişleri › Yeni fiş. Plaka, cari, malzeme, 1. tartım (brüt) ve 2. tartım (dara) girilir. Net tonaj otomatik çıkar. Birim fiyat ayrı satırdadır. Kaydet deyince gerçek kantar fişi önizlemesi açılır; Yazdır ile çıktı alınır.";
-  if(/excel|aktar|indir/.test(s) && /cari/.test(s))
-    return "Cari satırındaki indirme ikonu o carinin kartını, satışlarını ve finans hareketlerini çok sayfalı Excel’e yazar. Listedeki Toplu Excel ise tüm cari özetini ve bütün satışları iki sayfada verir.";
-  if(/bakiye/.test(s))
-    return "Cari bakiye = açılış + kantar satış tutarları − tahsilat + ödeme − tahsil edilmiş çekler. Detay için cari unvanına tıklayın.";
-  if(/çalışılmayan|calisilmayan|tesis|duruş|durus/.test(s))
-    return "Tesis Çalışma sayfasında süre alanı Çalışılmayan süre’dir. Yeni kayıtta saati elle girin: 01:30 veya 1.5. Neden (bakım, arıza…) ve açıklama eklenir.";
-  if(/çek|cek/.test(s))
-    return "Çekler sayfasından numara, banka, cari, tutar, keşide ve vade girilir. Durumlar: Portföy, Tahsil, Ciro, İade, Karşılıksız. Tahsil, ilgili cari bakiyesini düşürür.";
-  if(/şifre|sifre|e-posta|email|mail|ayar/.test(s))
-    return "Ayarlar › Hesap / e-posta. Mevcut şifreyi yazıp yeni şifreyi iki kez girin. Tema aynı sayfada Tema sekmesindedir. Kılavuz ve Hakkında da oradadır.";
-  if(/dashboard|özet|ozet|rapor|kaç|kac|toplam|ton/.test(s))
-    return `Güncel özet: ${db.fisler.length} kantar fişi, ${tonaj.toFixed(3)} ton, satış ${money(satis)}, cari alacak ${money(alacak)}, ${db.cariler.length} cari, ${db.cekler.length} çek, ${db.tesis.length} tesis duruş kaydı.`;
-  if(/malzeme|mıcır|micir|fiyat/.test(s))
-    return "Malzemeler sayfasından ürün ve varsayılan birim fiyat tanımlanır. Kantar fişinde malzeme seçilince birim fiyat gelir, fişte değiştirilebilir.";
-  if(/yedek|backup|silin/.test(s))
-    return "Sol alt Yedek al JSON indirir. Ayarlar › Hakkında › Yedek yükle ile geri gelir. Veri tarayıcı localStorage anahtarı micir_erp_v2 üzerindedir.";
-  if(/finans|tahsilat|ödeme|odeme/.test(s))
-    return "Finans sayfasına tahsilat veya ödeme yazılır. Tahsilat bakiyeyi azaltır, ödeme artırır. Yöntem: nakit, havale, kart, mahsup.";
-  if(/menü|menu|sayfa|modul|modül/.test(s))
-    return "Yan menü grupları — Operasyon: Dashboard, Kantar Fişleri, Malzemeler, Tesis Çalışma. Ticari: Cariler, Finans, Çekler. Sistem: Ayarlar, Asistan. Üstte açık sayfalar sekme olarak durur.";
-  return `Soruyu uygulama bağlamında yanıtladım.\n\nCanlı veri: ${db.fisler.length} fiş · ${tonaj.toFixed(3)} t · satış ${money(satis)} · alacak ${money(alacak)} · ${db.cekler.filter(c=>c.durum==="Portföy").length} portföy çek.\n\nDaha net sorabilirsiniz: kantar önizleme, cari Excel, çalışılmayan süre, çek tahsil, tema, şifre.`;
+  const tonaj=db.fisler.reduce((a,f)=>a+num(f.tonaj),0);
+  if(/kdv|kantar/.test(s)) return "Kantar fişinde KDV’siz = tonaj × birim fiyat. KDV tutarı %20. KDV’li = KDV’siz × 1,20. Kaydettikten sonra kantar fişi önizlemesi açılır. Excel içe aktarma sayfadaki butondadır.";
+  if(/cari/.test(s)) return "Cari listesinde sağ üstte tüm satışların tonaj / KDV’siz / KDV’li toplamı durur. Cariye tıklayınca fiş no filtresi ve o cariye ait aynı toplamlar sağ üsttedir. Satışlar Excel’e alınır.";
+  if(/yakit|yakıt/.test(s)) return "Yakıt: tarih, fiş no, plaka, şoför, teslim eden, saat (düz yazı satırı), km, litre, birim fiyat, toplam = lt × birim fiyat.";
+  if(/tesis/.test(s)) return "Tesis: tarih, işe başlama, paydos, manuel saat satırı ve + ile alt alta açıklama satırları.";
+  if(/sanayi/.test(s)) return "Sanayi giderleri ayrı cari listesi kullanır; satış carileriyle karışmaz. Ödeme fişinde alınan / verilen tutar ve önizleme vardır.";
+  if(/personel|izin|maaş|maas/.test(s)) return "Personel dört sekme: özlük, izin formu (önizlemeli), işe giriş-çıkış, maaş ödemesi.";
+  if(/gelir|gider|kasa/.test(s)) return "Gelir / Gider tek sayfada iki sekmedir. Gelir sekmesi toplam geliri, gider sekmesi toplam gideri gösterir. Sağ üstte gelir − gider durur. Kasa ayrı bakiyedir.";
+  if(/fatura|irsaliye/.test(s)) return "Faturalar gelen / giden sekmeli; alanlar tarih, fiş no, cari, VKN/TCKN, ürün, tonaj, KDV’siz, KDV, KDV’li. İrsaliye ayrı sayfadır ve önizlenir.";
+  return `Canlı özet: ${db.fisler.length} kantar fişi, ${tonaj.toFixed(3)} t, ${db.cariler.length} cari, ${db.faturalar.length} fatura, ${db.personel.length} personel.`;
 }
 
-function render(){
-  loadDb();
-  applyTheme();
-  if(!loggedIn()) renderAuth();
-  else renderApp();
-}
+function render(){loadDb();applyTheme();if(!loggedIn()) renderAuth(); else renderApp()}
 window.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal()});
 render();
 </script>
