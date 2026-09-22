@@ -356,16 +356,16 @@ function nextFisNo(){
 }
 
 function defaultDb(){
-  const c1=uid("c"),c2=uid("c"),c3=uid("c");
   const m1=uid("m"),m2=uid("m"),m3=uid("m"),m4=uid("m");
   return {
     version:2,
+    users:[],
     settings:{
       company:"Mıcır Ocağı",
       workspace:"Merkez Tesis",
-      email:"admin@micir.local",
-      password:"Admin123!",
-      userName:"İşletme Yöneticisi",
+      email:"",
+      password:"",
+      userName:"",
       theme:"default",
       phone:"",
       address:"",
@@ -377,24 +377,11 @@ function defaultDb(){
       {id:m3,ad:"3 No Mıcır (22-32 mm)",birim:"ton",fiyat:370},
       {id:m4,ad:"Taş Tozu",birim:"ton",fiyat:280}
     ],
-    cariler:[
-      {id:c1,kod:"C-1001",unvan:"Anadolu Beton A.Ş.",tip:"Alıcı",yetkili:"Mehmet Kaya",telefon:"0322 000 00 01",vergiDairesi:"Seyhan",vergiNo:"1111111111",adres:"Adana",acilis:0},
-      {id:c2,kod:"C-1002",unvan:"Toros İnşaat Ltd.",tip:"Alıcı",yetkili:"Ayşe Demir",telefon:"0322 000 00 02",vergiDairesi:"Yüreğir",vergiNo:"2222222222",adres:"Adana",acilis:0},
-      {id:c3,kod:"C-2001",unvan:"Çukurova Nakliyat",tip:"Alıcı / Satıcı",yetkili:"Hasan Öz",telefon:"0322 000 00 03",vergiDairesi:"Çukurova",vergiNo:"3333333333",adres:"Adana",acilis:0}
-    ],
-    fisler:[
-      {id:uid("f"),no:"KF-1001",tarih:today(),saat:"08:40",plaka:"01 ABC 123",sofor:"Ali Vural",cariId:c1,malzemeId:m1,brut:28.4,dara:12.1,net:16.3,birimFiyat:420,not:"",operator:"Kantar"},
-      {id:uid("f"),no:"KF-1002",tarih:today(),saat:"10:15",plaka:"01 DEF 456",sofor:"Can Yıldız",cariId:c2,malzemeId:m2,brut:31.2,dara:13.0,net:18.2,birimFiyat:390,not:"",operator:"Kantar"}
-    ],
-    finans:[
-      {id:uid("fn"),tarih:today(),cariId:c1,tip:"tahsilat",tutar:5000,yontem:"Havale",aciklama:"Kısmi tahsilat"}
-    ],
-    cekler:[
-      {id:uid("ck"),no:"CK-88421",banka:"Ziraat Bankası",kesideci:"Anadolu Beton A.Ş.",cariId:c1,tutar:18500,keside:today(),vade:today(),durum:"Portföy",aciklama:""}
-    ],
-    tesis:[
-      {id:uid("t"),tarih:today(),vardiya:"Gündüz",calisilmayanSure:"01:30",neden:"Bakım",aciklama:"Kırıcı bakım duruşu"}
-    ]
+    cariler:[],
+    fisler:[],
+    finans:[],
+    cekler:[],
+    tesis:[]
   };
 }
 
@@ -404,6 +391,11 @@ function loadDb(){
     if(!raw){db=defaultDb();saveDb();return}
     db=JSON.parse(raw);
     if(!db.settings) db.settings=defaultDb().settings;
+    if(!Array.isArray(db.users)) db.users=[];
+    if(db.settings.email==="admin@micir.local" || db.settings.password==="Admin123!"){
+      db.settings.email=""; db.settings.password=""; db.settings.userName="";
+    }
+    db.users=db.users.filter(u=>u && u.email && u.email!=="admin@micir.local" && u.password!=="Admin123!");
     ["malzemeler","cariler","fisler","finans","cekler","tesis"].forEach(k=>{if(!Array.isArray(db[k])) db[k]=[]});
     db.fisler.forEach(f=>{
       if(f.net==null && f.brut!=null) f.net=Number(f.brut||0)-Number(f.dara||0);
@@ -413,14 +405,47 @@ function loadDb(){
 }
 function saveDb(){localStorage.setItem(DB_KEY,JSON.stringify(db))}
 
-function loggedIn(){return sessionStorage.getItem(SESSION_KEY)==="1"}
+let authMode="register";
+function currentEmail(){return sessionStorage.getItem(SESSION_KEY)||""}
+function loggedIn(){
+  const s=currentEmail();
+  if(!s || s==="1") return false;
+  return !!findUser(s);
+}
+function findUser(email){
+  email=String(email||"").trim().toLowerCase();
+  return (db.users||[]).find(u=>String(u.email).toLowerCase()===email)
+    || (db.settings.email && String(db.settings.email).toLowerCase()===email ? {email:db.settings.email,password:db.settings.password,name:db.settings.userName} : null);
+}
+function setSession(email){
+  sessionStorage.setItem(SESSION_KEY,email.trim().toLowerCase());
+}
 function login(email,pass){
-  if(email.trim().toLowerCase()===String(db.settings.email).toLowerCase() && pass===db.settings.password){
-    sessionStorage.setItem(SESSION_KEY,"1");return true;
-  }
+  const u=findUser(email);
+  if(u && u.password && pass===u.password){setSession(u.email);return true}
   return false;
 }
-function logout(){sessionStorage.removeItem(SESSION_KEY);render()}
+function registerUser(name,email,pass){
+  email=String(email||"").trim().toLowerCase();
+  name=String(name||"").trim();
+  if(!name||!email||!pass) return "Ad, e-posta ve şifre zorunlu.";
+  if(pass.length<6) return "Şifre en az 6 karakter olmalı.";
+  if(findUser(email)) return "Bu e-posta ile hesap var. Giriş yapın.";
+  db.users.push({id:uid("u"),name,email,password:pass});
+  if(!db.settings.email){
+    db.settings.email=email;
+    db.settings.password=pass;
+    db.settings.userName=name;
+  }
+  saveDb();
+  setSession(email);
+  return "";
+}
+function activeUser(){
+  const em=currentEmail();
+  return findUser(em) || {email:db.settings.email,name:db.settings.userName,password:db.settings.password};
+}
+function logout(){sessionStorage.removeItem(SESSION_KEY);authMode=db.users.length?"login":"register";render()}
 
 function toast(msg,err){
   const el=document.createElement("div");
@@ -578,6 +603,8 @@ function restoreBackup(file){
 
 function renderAuth(){
   document.getElementById("appRoot").classList.add("hidden");
+  if(!(db.users||[]).length && !db.settings.password) authMode="register";
+  const reg=authMode==="register";
   document.getElementById("authRoot").innerHTML=`
   <div class="auth-screen">
     <aside class="auth-brand-side">
@@ -598,16 +625,21 @@ function renderAuth(){
     </aside>
     <section class="auth-form-side">
       <div class="auth-card">
-        <h2>Giriş yapın</h2>
-        <p>Kayıtlı e-posta ve şifrenizle devam edin. Şifre Ayarlar sayfasından güncellenir.</p>
-        <form onsubmit="event.preventDefault();doLogin(this)">
+        <h2>${reg?"Hesap oluşturun":"Giriş yapın"}</h2>
+        <p>${reg?"Kendi e-posta ve şifrenizle hesap açın. Demo kullanıcı yok.":"Kayıtlı e-posta ve şifrenizle devam edin."}</p>
+        <form onsubmit="event.preventDefault();${reg?"doRegister(this)":"doLogin(this)"}">
+          ${reg?`<label class="lbl">Ad soyad</label><input class="inp" name="name" required style="margin-bottom:12px" autocomplete="name">`:""}
           <label class="lbl">E-posta</label>
-          <input class="inp" name="email" type="email" value="${esc(db.settings.email)}" required style="margin-bottom:12px">
+          <input class="inp" name="email" type="email" required style="margin-bottom:12px" autocomplete="username" value="">
           <label class="lbl">Şifre</label>
-          <input class="inp" name="password" type="password" required style="margin-bottom:18px">
-          <button class="btn btn-p" style="width:100%">Giriş</button>
+          <input class="inp" name="password" type="password" required style="margin-bottom:${reg?"12px":"18px"}" autocomplete="${reg?"new-password":"current-password"}">
+          ${reg?`<label class="lbl">Şifre tekrar</label><input class="inp" name="password2" type="password" required style="margin-bottom:18px" autocomplete="new-password">`:""}
+          <button class="btn btn-p" style="width:100%">${reg?"Hesap oluştur ve gir":"Giriş"}</button>
         </form>
-        <p class="field-note" style="margin-top:14px">Varsayılan: ${esc(db.settings.email)} / Ayarlar’dan değiştirebilirsiniz.</p>
+        <p class="field-note" style="margin-top:14px">
+          ${reg?`Hesabınız var mı? <button class="record-link" type="button" onclick="authMode='login';renderAuth()">Giriş yapın</button>`
+               :`Hesabınız yok mu? <button class="record-link" type="button" onclick="authMode='register';renderAuth()">Hesap oluşturun</button>`}
+        </p>
       </div>
     </section>
   </div>`;
@@ -616,6 +648,14 @@ function doLogin(form){
   const fd=new FormData(form);
   if(login(fd.get("email"),fd.get("password"))){toast("Hoş geldiniz");render()}
   else toast("E-posta veya şifre hatalı",true);
+}
+function doRegister(form){
+  const fd=new FormData(form);
+  if(fd.get("password")!==fd.get("password2")){toast("Şifreler eşleşmiyor",true);return}
+  const err=registerUser(fd.get("name"),fd.get("email"),fd.get("password"));
+  if(err){toast(err,true);return}
+  toast("Hesap oluşturuldu");
+  render();
 }
 
 function renderApp(){
@@ -661,11 +701,11 @@ function renderApp(){
           <div class="header-divider"></div>
           <div class="profile-wrap">
             <button class="profile-button" onclick="profileOpen=!profileOpen;renderApp()">
-              <div class="avatar">${esc((db.settings.userName||"Y").slice(0,2).toUpperCase())}</div>
-              <div class="profile-copy"><b>${esc(db.settings.userName)}</b><small>${esc(db.settings.email)}</small></div>
+              <div class="avatar">${esc(((activeUser().name||activeUser().email||"Y").slice(0,2)).toUpperCase())}</div>
+              <div class="profile-copy"><b>${esc(activeUser().name||db.settings.userName||"Kullanıcı")}</b><small>${esc(activeUser().email||"")}</small></div>
             </button>
             ${profileOpen?`<div class="card profile-menu">
-              <div style="margin-bottom:10px"><b style="font-size:12px">${esc(db.settings.userName)}</b><div class="field-note">${esc(db.settings.email)}</div></div>
+              <div style="margin-bottom:10px"><b style="font-size:12px">${esc(activeUser().name||db.settings.userName||"Kullanıcı")}</b><div class="field-note">${esc(activeUser().email||"")}</div></div>
               <button class="btn btn-s" style="width:100%;margin-bottom:6px" onclick="navTo('ayarlar')">Ayarlar</button>
               <button class="btn btn-danger" style="width:100%" onclick="logout()">${ICONS.out} Çıkış</button>
             </div>`:""}
@@ -805,7 +845,7 @@ function exportKantar(){
   toast("Kantar listesi aktarıldı");
 }
 function openFisForm(id){
-  const f=id?db.fisler.find(x=>x.id===id):{tarih:today(),saat:nowTime(),no:nextFisNo(),brut:"",dara:"",birimFiyat:"",operator:db.settings.userName};
+  const f=id?db.fisler.find(x=>x.id===id):{tarih:today(),saat:nowTime(),no:nextFisNo(),brut:"",dara:"",birimFiyat:"",operator:activeUser().name||db.settings.userName};
   const cariOpts=db.cariler.map(c=>`<option value="${c.id}" ${c.id===f.cariId?"selected":""}>${esc(c.unvan)}</option>`).join("");
   const malOpts=db.malzemeler.map(m=>`<option value="${m.id}" ${m.id===f.malzemeId?"selected":""} data-fiyat="${m.fiyat}">${esc(m.ad)}</option>`).join("");
   openModal(`<div class="modal-header"><h3>${id?"Fişi düzenle":"Yeni kantar fişi"}</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
@@ -1146,6 +1186,7 @@ function delCek(id){if(!confirm("Silinsin mi?"))return;db.cekler=db.cekler.filte
 
 function viewAyarlar(){
   const s=db.settings;
+  const u=activeUser();
   const tab=filters.ayar||"hesap";
   const tabs=[["hesap","Hesap / e-posta"],["tema","Tema"],["kilavuz","Kullanım kılavuzu"],["hakkinda","Hakkında"]];
   return `
@@ -1162,8 +1203,8 @@ function viewAyarlar(){
         <div class="form-grid">
           <div class="full"><label class="lbl">İşletme</label><input class="inp" name="company" value="${esc(s.company)}"></div>
           <div class="full"><label class="lbl">Tesis / çalışma alanı</label><input class="inp" name="workspace" value="${esc(s.workspace)}"></div>
-          <div class="full"><label class="lbl">Kullanıcı adı</label><input class="inp" name="userName" value="${esc(s.userName)}"></div>
-          <div class="full"><label class="lbl">E-posta</label><input class="inp" type="email" name="email" value="${esc(s.email)}" required></div>
+          <div class="full"><label class="lbl">Kullanıcı adı</label><input class="inp" name="userName" value="${esc(u.name||s.userName||"")}"></div>
+          <div class="full"><label class="lbl">E-posta</label><input class="inp" type="email" name="email" value="${esc(u.email||s.email||"")}" required></div>
           <div class="full"><label class="lbl">Mevcut şifre</label><input class="inp" type="password" name="oldPass" placeholder="Şifre değiştirecekseniz doldurun"></div>
           <div><label class="lbl">Yeni şifre</label><input class="inp" type="password" name="newPass"></div>
           <div><label class="lbl">Yeni şifre (tekrar)</label><input class="inp" type="password" name="newPass2"></div>
@@ -1179,7 +1220,7 @@ function viewAyarlar(){
     </div>`:""}
   ${tab==="kilavuz"?`
     <div class="card guide" style="padding:22px;max-width:760px">
-      <h3>1. Giriş</h3><p>E-posta ve şifre Ayarlar › Hesap bölümünden güncellenir. Oturum tarayıcı kapanınca düşer.</p>
+      <h3>1. Giriş</h3><p>Demo hesap yoktur. İlk açılışta hesap oluşturun. E-posta ve şifre Ayarlar › Hesap bölümünden güncellenir. Oturum tarayıcı kapanınca düşer.</p>
       <h3>2. Dashboard</h3><p>Tonaj, satış tutarı, cari alacak, son fişler ve portföy çekleri.</p>
       <h3>3. Kantar fişleri</h3>
       <ul><li>Brüt ve dara ayrı alanlardır; net otomatik hesaplanır.</li><li>Birim fiyat ve tonaj formda ayrı satırdadır.</li><li>Kaydettikten sonra kantar fişi önizlemesi açılır; yazdırılabilir.</li></ul>
@@ -1203,17 +1244,27 @@ function viewAyarlar(){
 }
 function saveSettings(form){
   const fd=new FormData(form);
+  const u=activeUser();
+  const oldEmail=String(u.email||"").toLowerCase();
   db.settings.company=fd.get("company");
   db.settings.workspace=fd.get("workspace");
   db.settings.userName=fd.get("userName");
-  db.settings.email=fd.get("email");
+  const newEmail=String(fd.get("email")||"").trim().toLowerCase();
+  db.settings.email=newEmail;
   const oldP=fd.get("oldPass"), n1=fd.get("newPass"), n2=fd.get("newPass2");
+  let newPass=u.password||db.settings.password;
   if(n1||n2||oldP){
-    if(oldP!==db.settings.password){toast("Mevcut şifre hatalı",true);return}
+    if(oldP!==(u.password||db.settings.password)){toast("Mevcut şifre hatalı",true);return}
     if(n1.length<6){toast("Yeni şifre en az 6 karakter",true);return}
     if(n1!==n2){toast("Yeni şifreler eşleşmiyor",true);return}
+    newPass=n1;
     db.settings.password=n1;
   }
+  db.users=(db.users||[]).map(x=>{
+    if(String(x.email).toLowerCase()!==oldEmail) return x;
+    return {...x,name:fd.get("userName"),email:newEmail,password:newPass};
+  });
+  if(newEmail) setSession(newEmail);
   saveDb(); renderApp(); toast("Ayarlar güncellendi");
 }
 function setTheme(t){db.settings.theme=t;saveDb();renderApp();toast("Tema uygulandı")}
